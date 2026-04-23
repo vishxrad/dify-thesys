@@ -62,6 +62,18 @@
 
 Dify is an open-source LLM app development platform. Its intuitive interface combines AI workflow, RAG pipeline, agent capabilities, model management, observability features (including [Opik](https://www.comet.com/docs/opik/integrations/dify), [Langfuse](https://docs.langfuse.com), and [Arize Phoenix](https://docs.arize.com/phoenix)) and more, letting you quickly go from prototype to production. Here's a list of the core features:
 
+## This fork
+
+This fork adds first-class Thesys support on top of upstream Dify:
+
+- A dedicated `Thesys` model provider plugin lives in [local-plugins/thesys](./local-plugins/thesys) instead of relying on the generic OpenAI-compatible provider.
+- Thesys C1 / OpenUI responses render as generative UI in the Dify frontend instead of showing raw markup.
+- A source-based Docker overlay builds the repo's `api` and `web` code and boots the bundled Thesys plugin on plain `http://localhost`.
+
+If you want the Thesys-enabled version of this fork, use the source Docker stack described below. The upstream-style `docker compose up -d` command still starts the stock image-based Dify stack and will not include the repo's frontend/backend fork changes.
+
+For the full implementation history, design decisions, and debugging notes, see [changes.md](./changes.md).
+
 ## Quick start
 
 > Before installing Dify, make sure your machine meets the following minimum system requirements:
@@ -71,7 +83,27 @@ Dify is an open-source LLM app development platform. Its intuitive interface com
 
 <br/>
 
-The easiest way to start the Dify server is through [Docker Compose](docker/docker-compose.yaml). Before running Dify with the following commands, make sure that [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/) are installed on your machine:
+### Run this fork
+
+Before running Dify with the following commands, make sure that [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/) are installed on your machine:
+
+```bash
+cd dify
+cd docker
+cp .env.example .env
+docker compose -f docker-compose.yaml -f docker-compose.source.yaml up -d --build
+```
+
+After the containers are ready:
+
+- Open [http://localhost/install](http://localhost/install) and finish the initial setup.
+- Use plain `http://localhost` for the app. You do not need a separate `localhost:3000` dev server.
+- On a fresh install, the bundled `Thesys` provider is available through the source stack.
+- To test Thesys, go to `Settings -> Model Provider -> Thesys`, add your Thesys API key, select the model you want, and run a chat/workflow normally.
+
+### Run upstream-style Dify from the same repo
+
+If you intentionally want the stock Dify image-based deployment instead of this fork's source-built stack, use the original command:
 
 ```bash
 cd dify
@@ -80,7 +112,7 @@ cp .env.example .env
 docker compose up -d
 ```
 
-After running, you can access the Dify dashboard in your browser at [http://localhost/install](http://localhost/install) and start the initialization process.
+That path is useful for comparing behavior with upstream, but it does not include this fork's Thesys plugin, frontend C1 renderer, or other repo-local source changes.
 
 #### Seeking help
 
