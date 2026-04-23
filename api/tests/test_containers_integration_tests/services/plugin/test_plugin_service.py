@@ -281,6 +281,27 @@ class TestUploadPkg:
         assert result is upload_resp
 
 
+class TestInstallFromLocalPkg:
+    @patch("services.plugin.plugin_service.FeatureService")
+    @patch("services.plugin.plugin_service.PluginInstaller")
+    def test_skips_redecode_for_uploaded_local_packages(self, mock_installer_cls, mock_fs):
+        mock_fs.get_system_features.return_value = _make_features()
+        installer = mock_installer_cls.return_value
+        installer.install_from_identifiers.return_value = "task-id"
+
+        result = PluginService.install_from_local_pkg(
+            "t1",
+            ["local/thesys:0.1.0@checksum"],
+        )
+
+        assert result == "task-id"
+        installer.decode_plugin_from_identifier.assert_not_called()
+        installer.install_from_identifiers.assert_called_once()
+        call_args = installer.install_from_identifiers.call_args[0]
+        assert call_args[1] == ["local/thesys:0.1.0@checksum"]
+        assert call_args[2] == PluginInstallationSource.Package
+
+
 class TestInstallFromMarketplacePkg:
     @patch("services.plugin.plugin_service.dify_config")
     def test_raises_when_marketplace_disabled(self, mock_config):

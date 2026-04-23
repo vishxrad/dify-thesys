@@ -1,0 +1,19 @@
+[project]
+name = "thesys-provider-local"
+version = "0.1.0"
+description = "Dedicated Thesys model provider for Dify"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "dify-plugin==0.7.2",
+    "openai==2.3.0",
+    "pydantic==2.12.0",
+    "requests==2.32.5",
+    "setuptools==80.9.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.1",
+    "ruff>=0.12.5",
+]

@@ -1,0 +1,30 @@
+version: 0.1.0
+type: plugin
+author: "local"
+name: "thesys"
+description:
+  en_US: Dedicated Thesys provider for C1 and other Thesys chat models.
+label:
+  en_US: "Thesys"
+created_at: "2026-04-23T00:00:00Z"
+icon: icon.svg
+resource:
+  memory: 1048576
+  permission:
+    tool:
+      enabled: true
+    model:
+      enabled: true
+      llm: true
+plugins:
+  models:
+    - "provider/thesys.yaml"
+meta:
+  version: 0.0.1
+  arch:
+    - "amd64"
+    - "arm64"
+  runner:
+    language: "python"
+    version: "3.12"
+    entrypoint: "main"

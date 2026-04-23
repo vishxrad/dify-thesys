@@ -399,11 +399,21 @@ class PluginService:
 
     @staticmethod
     def install_from_local_pkg(tenant_id: str, plugin_unique_identifiers: Sequence[str]):
+        """
+        Install plugin packages that were already uploaded to the plugin daemon.
+
+        Uploaded local packages are decoded and scope-checked during ``upload_pkg``.
+        Some plugin-daemon builds reject a second decode pass for ``local/...``
+        identifiers, so only re-decode non-local identifiers here.
+        """
         PluginService._check_marketplace_only_permission()
 
         manager = PluginInstaller()
 
         for plugin_unique_identifier in plugin_unique_identifiers:
+            if plugin_unique_identifier.startswith("local/"):
+                continue
+
             resp = manager.decode_plugin_from_identifier(tenant_id, plugin_unique_identifier)
             PluginService._check_plugin_installation_scope(resp.verification)
 

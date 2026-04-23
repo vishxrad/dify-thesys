@@ -1,0 +1,153 @@
+provider: thesys
+label:
+  en_US: Thesys
+description:
+  en_US: Dedicated Thesys provider for C1 and other Thesys chat models.
+icon_small:
+  en_US: icon.svg
+icon_large:
+  en_US: icon.svg
+background: "#0F172A"
+supported_model_types:
+  - llm
+configurate_methods:
+  - predefined-model
+  - customizable-model
+provider_credential_schema:
+  credential_form_schemas:
+    - variable: api_key
+      label:
+        en_US: API Key
+      type: secret-input
+      required: true
+      placeholder:
+        en_US: Enter your Thesys API key
+    - variable: validate_model
+      label:
+        en_US: Validate Model
+      type: text-input
+      required: false
+      default: "c1/openai/gpt-5/v-20251230"
+      placeholder:
+        en_US: Model used for provider validation
+model_credential_schema:
+  model:
+    label:
+      en_US: Model Name
+    placeholder:
+      en_US: Enter the Thesys model id
+  credential_form_schemas:
+    - variable: display_name
+      label:
+        en_US: Model display name
+      type: text-input
+      required: false
+      placeholder:
+        en_US: Optional name shown in the UI
+    - variable: api_key
+      label:
+        en_US: API Key
+      type: secret-input
+      required: true
+      placeholder:
+        en_US: Enter your Thesys API key
+    - variable: context_size
+      label:
+        en_US: Model context size
+      type: text-input
+      required: true
+      default: "128000"
+      show_on:
+        - variable: __model_type
+          value: llm
+      placeholder:
+        en_US: Enter the model context size
+    - variable: max_tokens_to_sample
+      label:
+        en_US: Upper bound for max tokens
+      type: text-input
+      required: false
+      default: "4096"
+      show_on:
+        - variable: __model_type
+          value: llm
+    - variable: function_calling_type
+      label:
+        en_US: Function Call Type
+      type: select
+      required: false
+      default: no_call
+      show_on:
+        - variable: __model_type
+          value: llm
+      options:
+        - value: function_call
+          label:
+            en_US: Function Call
+        - value: tool_call
+          label:
+            en_US: Tool Call
+        - value: no_call
+          label:
+            en_US: Not Support
+    - variable: vision_support
+      label:
+        en_US: Vision Support
+      type: select
+      required: false
+      default: no_support
+      show_on:
+        - variable: __model_type
+          value: llm
+      options:
+        - value: support
+          label:
+            en_US: Support
+        - value: no_support
+          label:
+            en_US: Not Support
+    - variable: structured_output_support
+      label:
+        en_US: Structured Output
+      type: select
+      required: false
+      default: supported
+      show_on:
+        - variable: __model_type
+          value: llm
+      options:
+        - value: supported
+          label:
+            en_US: Support
+        - value: not_supported
+          label:
+            en_US: Not Support
+    - variable: agent_thought_support
+      label:
+        en_US: Thinking Mode Support
+      type: select
+      required: false
+      default: supported
+      show_on:
+        - variable: __model_type
+          value: llm
+      options:
+        - value: only_thinking_supported
+          label:
+            en_US: Only Thinking Mode
+        - value: not_supported
+          label:
+            en_US: Only Non-Thinking Mode
+        - value: supported
+          label:
+            en_US: Both Modes
+models:
+  llm:
+    predefined:
+      - "models/llm/*.yaml"
+    position: "models/llm/_position.yaml"
+extra:
+  python:
+    provider_source: provider/thesys.py
+    model_sources:
+      - "models/llm/llm.py"
