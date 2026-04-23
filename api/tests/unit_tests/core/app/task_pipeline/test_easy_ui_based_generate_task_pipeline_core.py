@@ -216,6 +216,74 @@ class TestEasyUiBasedGenerateTaskPipeline:
         assert any(isinstance(item, PingStreamResponse) for item in responses)
         assert responses[-1] == "end"
 
+    def test_process_stream_response_preserves_streamed_text_when_message_end_payload_is_empty(self, monkeypatch):
+        conversation = SimpleNamespace(id="conv", mode=AppMode.CHAT)
+        message = SimpleNamespace(id="msg", created_at=datetime.now(UTC))
+
+        pipeline = EasyUIBasedGenerateTaskPipeline(
+            application_generate_entity=_make_entity(ChatAppGenerateEntity, AppMode.CHAT),
+            queue_manager=SimpleNamespace(),
+            conversation=conversation,
+            message=message,
+            stream=True,
+        )
+
+        chunk = LLMResultChunk(
+            model="mock",
+            prompt_messages=[],
+            delta=LLMResultChunkDelta(
+                index=0,
+                message=AssistantPromptMessage(content="<content thesys=\"true\">payload</content>"),
+            ),
+        )
+        llm_result = LLMResult(
+            model="mock",
+            prompt_messages=[],
+            message=AssistantPromptMessage(content=""),
+            usage=LLMUsage.empty_usage(),
+        )
+
+        events = [
+            SimpleNamespace(event=QueueLLMChunkEvent(chunk=chunk)),
+            SimpleNamespace(event=QueueMessageEndEvent(llm_result=llm_result)),
+        ]
+
+        pipeline.queue_manager.listen = lambda: iter(events)
+        pipeline._message_cycle_manager.get_message_event_type = lambda message_id: None
+        pipeline._message_cycle_manager.message_to_stream_response = lambda **kwargs: "chunk"
+        pipeline.handle_output_moderation_when_task_finished = lambda completion: None
+        pipeline._message_end_to_stream_response = lambda: "end"
+        pipeline._save_message = lambda **kwargs: None
+
+        class _Session:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def commit(self):
+                return None
+
+        monkeypatch.setattr(
+            "core.app.task_pipeline.easy_ui_based_generate_task_pipeline.Session",
+            _Session,
+        )
+        monkeypatch.setattr(
+            "core.app.task_pipeline.easy_ui_based_generate_task_pipeline.db",
+            SimpleNamespace(engine=object()),
+        )
+
+        responses = list(pipeline._process_stream_response(publisher=None))
+
+        assert responses[-1] == "end"
+        assert pipeline._task_state.llm_result.message.get_text_content() == (
+            "<content thesys=\"true\">payload</content>"
+        )
+
     def test_handle_output_moderation_chunk_directs_output(self):
         conversation = SimpleNamespace(id="conv", mode=AppMode.CHAT)
         message = SimpleNamespace(id="msg", created_at=datetime.now(UTC))

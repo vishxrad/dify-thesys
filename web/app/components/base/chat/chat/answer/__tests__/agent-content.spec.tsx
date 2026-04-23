@@ -1,9 +1,19 @@
+import type { ReactNode } from 'react'
 import type { ChatItem } from '../../../types'
 import type { IThoughtProps } from '@/app/components/base/chat/chat/thought'
 import type { FileEntity } from '@/app/components/base/file-uploader/types'
 import type { MarkdownProps } from '@/app/components/base/markdown'
 import { render, screen } from '@testing-library/react'
 import AgentContent from '../agent-content'
+
+vi.mock('@thesysai/genui-sdk', () => ({
+  ThemeProvider: ({ children }: { children: ReactNode }) => children,
+  C1Component: ({ c1Response }: { c1Response: string }) => (
+    <div data-testid="c1-component" data-response={c1Response}>
+      {c1Response}
+    </div>
+  ),
+}))
 
 // Mock Markdown component used only in tests
 vi.mock('@/app/components/base/markdown', () => ({
@@ -77,6 +87,18 @@ describe('AgentContent', () => {
   it('renders content prop if provided and no annotation', () => {
     render(<AgentContent item={mockItem} content="Direct Content" />)
     expect(screen.getByTestId('agent-content-markdown')).toHaveTextContent('Direct Content')
+  })
+
+  it('renders C1 content with the C1 renderer', () => {
+    render(
+      <AgentContent
+        item={mockItem}
+        content="<content><Card title='Agent response' /></content>"
+      />,
+    )
+
+    expect(screen.getByTestId('agent-content-c1')).toBeInTheDocument()
+    expect(screen.getByTestId('c1-component')).toHaveAttribute('data-response', '<content><Card title=\'Agent response\' /></content>')
   })
 
   it('renders agent_thoughts if content is absent', () => {

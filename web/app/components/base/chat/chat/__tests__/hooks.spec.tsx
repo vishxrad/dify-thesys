@@ -814,6 +814,48 @@ describe('useChat', () => {
       expect(result.current.chatList[result.current.chatList.length - 1]!.content).toBe('streamed content')
     })
 
+    it('should preserve streamed content when conversation history answer is blank', async () => {
+      let callbacks: HookCallbacks
+      vi.mocked(ssePost).mockImplementation(async (_url, _params, options) => {
+        callbacks = options as HookCallbacks
+      })
+
+      const onGetConversationMessages = vi.fn().mockResolvedValue({
+        data: [{
+          id: 'm-thesys-history',
+          answer: '',
+          message: [{ role: 'user', text: 'hi' }],
+          message_files: [],
+          created_at: Date.now(),
+          answer_tokens: 0,
+          message_tokens: 5,
+          provider_response_latency: 0.5,
+          inputs: {},
+          query: 'hi',
+        }],
+      })
+
+      const { result } = renderHook(() => useChat())
+
+      act(() => {
+        result.current.handleSend('test-url', { query: 'keep streamed response' }, { onGetConversationMessages })
+      })
+
+      await act(async () => {
+        callbacks.onData('<content thesys="true">{&quot;component&quot;:{&quot;component&quot;:&quot;Card&quot;}}</content>', true, {
+          messageId: 'm-thesys-history',
+          conversationId: 'c-thesys-history',
+          taskId: 't-thesys-history',
+        })
+        await callbacks.onCompleted()
+      })
+
+      const lastResponse = result.current.chatList[result.current.chatList.length - 1]
+      expect(onGetConversationMessages).toHaveBeenCalled()
+      expect(lastResponse!.content).toBe('<content thesys="true">{&quot;component&quot;:{&quot;component&quot;:&quot;Card&quot;}}</content>')
+      expect(lastResponse!.log?.at(-1)?.text).toBe('<content thesys="true">{&quot;component&quot;:{&quot;component&quot;:&quot;Card&quot;}}</content>')
+    })
+
     it('should clear suggested questions when suggestion fetch fails after completion', async () => {
       let callbacks: HookCallbacks
       vi.mocked(ssePost).mockImplementation(async (_url, _params, options) => {

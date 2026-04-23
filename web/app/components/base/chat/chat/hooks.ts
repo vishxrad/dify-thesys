@@ -761,16 +761,18 @@ export const useChat = (
           if (!newResponseItem)
             return
 
-          const isUseAgentThought = newResponseItem.agent_thoughts?.length > 0 && newResponseItem.agent_thoughts[newResponseItem.agent_thoughts?.length - 1].thought === newResponseItem.answer
+          const historyAnswer = typeof newResponseItem.answer === 'string' ? newResponseItem.answer : ''
+          const resolvedAnswer = historyAnswer.trim().length > 0 ? historyAnswer : responseItem.content
+          const isUseAgentThought = newResponseItem.agent_thoughts?.length > 0 && newResponseItem.agent_thoughts[newResponseItem.agent_thoughts?.length - 1].thought === resolvedAnswer
           updateChatTreeNode(responseItem.id, {
-            content: isUseAgentThought ? '' : newResponseItem.answer,
+            content: isUseAgentThought ? '' : resolvedAnswer,
             log: [
               ...newResponseItem.message,
               ...(newResponseItem.message.at(-1).role !== 'assistant'
                 ? [
                     {
                       role: 'assistant',
-                      text: newResponseItem.answer,
+                      text: resolvedAnswer,
                       files: newResponseItem.message_files?.filter((file: any) => file.belongs_to === 'assistant') || [],
                     },
                   ]

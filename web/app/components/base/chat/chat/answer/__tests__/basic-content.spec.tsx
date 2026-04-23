@@ -1,7 +1,17 @@
+import type { ReactNode } from 'react'
 import type { ChatItem } from '../../../types'
 import type { MarkdownProps } from '@/app/components/base/markdown'
 import { render, screen } from '@testing-library/react'
 import BasicContent from '../basic-content'
+
+vi.mock('@thesysai/genui-sdk', () => ({
+  ThemeProvider: ({ children }: { children: ReactNode }) => children,
+  C1Component: ({ c1Response }: { c1Response: string }) => (
+    <div data-testid="c1-component" data-response={c1Response}>
+      {c1Response}
+    </div>
+  ),
+}))
 
 // Mock Markdown component used only in tests
 vi.mock('@/app/components/base/markdown', () => ({
@@ -37,6 +47,18 @@ describe('BasicContent', () => {
     render(<BasicContent item={itemWithAnnotation as ChatItem} />)
     const markdown = screen.getByTestId('basic-content-markdown')
     expect(markdown).toHaveAttribute('data-content', 'Annotated Content')
+  })
+
+  it('renders C1 responses with the C1 renderer', () => {
+    const itemWithC1Content = {
+      ...mockItem,
+      content: '<content><Card title="Hello" /></content>',
+    }
+
+    render(<BasicContent item={itemWithC1Content as ChatItem} />)
+
+    expect(screen.getByTestId('basic-content-c1')).toBeInTheDocument()
+    expect(screen.getByTestId('c1-component')).toHaveAttribute('data-response', '<content><Card title="Hello" /></content>')
   })
 
   it('renders empty string if logAnnotation content is missing', () => {
@@ -99,15 +121,5 @@ describe('BasicContent', () => {
     render(<BasicContent item={errorItem as ChatItem} />)
     const markdown = screen.getByTestId('basic-content-markdown')
     expect(markdown).toHaveClass('text-[#F04438]!')
-  })
-
-  it('renders non-string content without attempting to wrap (covers typeof !== "string" branch)', () => {
-    const itemWithNonStringContent = {
-      ...mockItem,
-      content: 12345,
-    }
-    render(<BasicContent item={itemWithNonStringContent as unknown as ChatItem} />)
-    const markdown = screen.getByTestId('basic-content-markdown')
-    expect(markdown).toHaveAttribute('data-content', '12345')
   })
 })

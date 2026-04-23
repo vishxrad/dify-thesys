@@ -1,8 +1,7 @@
 import type { FC } from 'react'
 import type { ChatItem } from '../../types'
-import { cn } from '@langgenius/dify-ui/cn'
 import { memo } from 'react'
-import { Markdown } from '@/app/components/base/markdown'
+import ResponseRenderer from './response-renderer'
 
 type BasicContentProps = {
   item: ChatItem
@@ -17,9 +16,9 @@ const BasicContent: FC<BasicContentProps> = ({
 
   if (annotation?.logAnnotation) {
     return (
-      <Markdown
-        content={annotation?.logAnnotation.content || ''}
-        data-testid="basic-content-markdown"
+      <ResponseRenderer
+        content={annotation.logAnnotation.content ?? ''}
+        testIdBase="basic-content"
       />
     )
   }
@@ -27,17 +26,15 @@ const BasicContent: FC<BasicContentProps> = ({
   // Preserve Windows UNC paths and similar backslash-heavy strings by
   // wrapping them in inline code so Markdown renders backslashes verbatim.
   let displayContent = content
-  if (typeof content === 'string' && /^\\\\\S.*/.test(content) && !/^`.*`$/.test(content)) {
+  if (/^\\\\\S.*/.test(content) && !/^`.*`$/.test(content)) {
     displayContent = `\`${content}\``
   }
 
   return (
-    <Markdown
-      className={cn(
-        item.isError && 'text-[#F04438]!',
-      )}
+    <ResponseRenderer
+      className={item.isError ? 'text-[#F04438]!' : undefined}
       content={displayContent}
-      data-testid="basic-content-markdown"
+      testIdBase="basic-content"
     />
   )
 }

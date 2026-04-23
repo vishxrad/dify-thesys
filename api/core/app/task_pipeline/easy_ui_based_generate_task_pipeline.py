@@ -273,7 +273,7 @@ class EasyUIBasedGenerateTaskPipeline(BasedGenerateTaskPipeline):
             elif isinstance(event, QueueStopEvent | QueueMessageEndEvent):
                 if isinstance(event, QueueMessageEndEvent):
                     if event.llm_result:
-                        self._task_state.llm_result = event.llm_result
+                        self._task_state.llm_result = self._merge_message_end_llm_result(event.llm_result)
                 else:
                     self._handle_stop(event)
 
@@ -367,6 +367,30 @@ class EasyUIBasedGenerateTaskPipeline(BasedGenerateTaskPipeline):
             publisher.publish(None)
         if self._conversation_name_generate_thread:
             logger.debug("Conversation name generation running as daemon thread")
+
+    def _merge_message_end_llm_result(self, llm_result: LLMResult) -> LLMResult:
+        """
+        Preserve streamed text when the terminal payload omits assistant content.
+
+        Some OpenAI-compatible providers stream normal text chunks but finish with an
+        empty assistant message in the final payload. The task pipeline accumulates the
+        streamed chunks as they arrive, so replacing that state with an empty final
+        `llm_result` would wipe the answer immediately before save.
+        """
+        final_text = llm_result.message.get_text_content()
+        if final_text:
+            return llm_result
+
+        accumulated_text = self._task_state.llm_result.message.get_text_content()
+        if not accumulated_text:
+            return llm_result
+
+        merged_result = llm_result.model_copy(deep=True)
+        merged_result.message.content = self._task_state.llm_result.message.content
+        if not merged_result.prompt_messages and self._task_state.llm_result.prompt_messages:
+            merged_result.prompt_messages = list(self._task_state.llm_result.prompt_messages)
+
+        return merged_result
 
     def _save_message(self, *, session: Session, trace_manager: TraceQueueManager | None = None):
         """
