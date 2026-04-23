@@ -14,6 +14,7 @@ from services.errors.account import (
     AccountRegisterError,
     CurrentPasswordIncorrectError,
 )
+from services.plugin.bundled_plugin_service import BundledPluginInstallError
 from tests.unit_tests.services.services_test_help import ServiceDbTestHelper
 
 
@@ -548,6 +549,58 @@ class TestTenantService:
             callable_func(*args, **kwargs)
 
     # ==================== Tenant Creation Tests ====================
+
+    def test_create_tenant_bootstraps_bundled_plugins(
+        self, mock_db_dependencies, mock_rsa_dependencies, mock_external_service_dependencies
+    ):
+        """Test that tenant creation triggers bundled plugin installation for the new tenant."""
+        mock_external_service_dependencies[
+            "feature_service"
+        ].get_system_features.return_value.is_allow_create_workspace = True
+        mock_rsa_dependencies.return_value = "mock_public_key"
+
+        with (
+            patch("services.account_service.Tenant") as mock_tenant_class,
+            patch("services.account_service.TenantPluginAutoUpgradeStrategy"),
+            patch("services.account_service.BundledPluginService.install_for_tenant") as mock_install_for_tenant,
+            patch("services.credit_pool_service.CreditPoolService.create_default_pool"),
+        ):
+            mock_tenant = MagicMock()
+            mock_tenant.id = "tenant-456"
+            mock_tenant.name = "Workspace"
+            mock_tenant_class.return_value = mock_tenant
+
+            result = TenantService.create_tenant("Workspace")
+
+        assert result == mock_tenant
+        mock_install_for_tenant.assert_called_once_with("tenant-456")
+
+    def test_create_tenant_raises_when_bundled_plugin_bootstrap_is_strict(
+        self, mock_db_dependencies, mock_rsa_dependencies, mock_external_service_dependencies
+    ):
+        """Test that strict bundled plugin bootstrapping surfaces installation failures."""
+        mock_external_service_dependencies[
+            "feature_service"
+        ].get_system_features.return_value.is_allow_create_workspace = True
+        mock_rsa_dependencies.return_value = "mock_public_key"
+
+        with (
+            patch("services.account_service.Tenant") as mock_tenant_class,
+            patch("services.account_service.TenantPluginAutoUpgradeStrategy"),
+            patch(
+                "services.account_service.BundledPluginService.install_for_tenant",
+                side_effect=BundledPluginInstallError("boom"),
+            ),
+            patch("services.credit_pool_service.CreditPoolService.create_default_pool"),
+            patch.object(dify_config, "PLUGIN_AUTO_INSTALL_STRICT", True),
+        ):
+            mock_tenant = MagicMock()
+            mock_tenant.id = "tenant-456"
+            mock_tenant.name = "Workspace"
+            mock_tenant_class.return_value = mock_tenant
+
+            with pytest.raises(BundledPluginInstallError, match="boom"):
+                TenantService.create_tenant("Workspace")
 
     def test_create_owner_tenant_if_not_exist_new_user(
         self, mock_db_dependencies, mock_rsa_dependencies, mock_external_service_dependencies

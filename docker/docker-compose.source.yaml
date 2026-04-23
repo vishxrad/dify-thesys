@@ -1,0 +1,25 @@
+services:
+  api:
+    image: dify-api-source
+    build:
+      context: ..
+      dockerfile: api/Dockerfile.source
+    environment:
+      PLUGIN_AUTO_INSTALL_LOCAL_PACKAGES: /app/local-plugins/thesys
+      PLUGIN_AUTO_INSTALL_STRICT: "true"
+
+  worker:
+    image: dify-api-source
+
+  worker_beat:
+    image: dify-api-source
+
+  web:
+    image: dify-web-source
+    build:
+      context: ..
+      dockerfile: web/Dockerfile.source
+
+  plugin_daemon:
+    environment:
+      FORCE_VERIFYING_SIGNATURE: "false"

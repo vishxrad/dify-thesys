@@ -62,6 +62,7 @@ from services.errors.account import (
 )
 from services.errors.workspace import WorkSpaceNotAllowedCreateError, WorkspacesLimitExceededError
 from services.feature_service import FeatureService
+from services.plugin.bundled_plugin_service import BundledPluginInstallError, BundledPluginService
 from tasks.delete_account_task import delete_account_task
 from tasks.mail_account_deletion_task import send_account_deletion_verification_code
 from tasks.mail_change_mail_task import (
@@ -1054,7 +1055,7 @@ class AccountService:
 class TenantService:
     @staticmethod
     def create_tenant(name: str, is_setup: bool | None = False, is_from_dashboard: bool | None = False) -> Tenant:
-        """Create tenant"""
+        """Create a tenant and bootstrap any configured bundled plugins."""
         if (
             not FeatureService.get_system_features().is_allow_create_workspace
             and not is_setup
@@ -1085,6 +1086,13 @@ class TenantService:
         from services.credit_pool_service import CreditPoolService
 
         CreditPoolService.create_default_pool(tenant.id)
+
+        try:
+            BundledPluginService.install_for_tenant(str(tenant.id))
+        except BundledPluginInstallError:
+            logger.exception("Failed to auto-install bundled plugins for tenant %s", tenant.id)
+            if dify_config.PLUGIN_AUTO_INSTALL_STRICT:
+                raise
 
         return tenant
 

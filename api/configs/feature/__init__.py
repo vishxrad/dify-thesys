@@ -270,6 +270,40 @@ class PluginConfig(BaseSettings):
         default=50 * 1024 * 1024,
     )
 
+    inner_PLUGIN_AUTO_INSTALL_LOCAL_PACKAGES: str = Field(
+        description=(
+            "Comma-separated local plugin paths that should be auto-installed for each new tenant. "
+            "Each path may point to a .difypkg archive or an unpacked plugin directory."
+        ),
+        validation_alias=AliasChoices("PLUGIN_AUTO_INSTALL_LOCAL_PACKAGES"),
+        default="",
+    )
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def PLUGIN_AUTO_INSTALL_LOCAL_PACKAGES(self) -> list[str]:
+        if not self.inner_PLUGIN_AUTO_INSTALL_LOCAL_PACKAGES:
+            return []
+
+        return [
+            plugin_path.strip()
+            for plugin_path in self.inner_PLUGIN_AUTO_INSTALL_LOCAL_PACKAGES.split(",")
+            if plugin_path.strip()
+        ]
+
+    PLUGIN_AUTO_INSTALL_TIMEOUT: PositiveInt = Field(
+        description="Timeout in seconds while waiting for bundled local plugin installation to finish",
+        default=120,
+    )
+
+    PLUGIN_AUTO_INSTALL_STRICT: bool = Field(
+        description=(
+            "Fail tenant creation when a configured bundled local plugin cannot be auto-installed. "
+            "Disable for best-effort installation."
+        ),
+        default=False,
+    )
+
 
 class MarketplaceConfig(BaseSettings):
     """
