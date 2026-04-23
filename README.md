@@ -88,7 +88,7 @@ For the full implementation history, design decisions, and debugging notes, see 
 Before running Dify with the following commands, make sure that [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/) are installed on your machine:
 
 ```bash
-cd dify
+cd dify-thesys
 cd docker
 cp .env.example .env
 docker compose -f docker-compose.yaml -f docker-compose.source.yaml up -d --build
