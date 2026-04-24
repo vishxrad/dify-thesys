@@ -29,7 +29,7 @@ from dify_plugin.interfaces.model.openai_compatible.llm import OAICompatLargeLan
 from pydantic import TypeAdapter, ValidationError
 
 THE_SYS_ENDPOINT_URL = "https://api.thesys.dev/v1/embed"
-DEFAULT_VALIDATE_MODEL = "c1/openai/gpt-5/v-20251230"
+DEFAULT_VALIDATE_MODEL = "c1/anthropic/claude-sonnet-4.6/v-20260331"
 
 
 def _extract_sse_data_payload(chunk: str) -> str:
@@ -55,7 +55,12 @@ def _extract_sse_data_payload(chunk: str) -> str:
 class ThesysLargeLanguageModel(OAICompatLargeLanguageModel):
     _THINK_PATTERN = re.compile(r"^<think>.*?</think>\s*", re.DOTALL)
     _NEEDS_MAX_COMPLETION_TOKENS_PATTERN = re.compile(r"^(o1|o3|gpt-5)", re.IGNORECASE)
-    _VALIDATE_TIMEOUT = (10, 300)
+    # Credential validation sends a 1-token ping. A 30s read budget is generous
+    # for that and avoids tying up the UI for minutes on a bad endpoint.
+    _VALIDATE_TIMEOUT = (10, 30)
+    # Hard cap the thinking-filter buffer so a malformed stream that opens
+    # `<think>` without ever closing it cannot grow memory unbounded.
+    _MAX_THINKING_BUFFER_CHARS = 64 * 1024
 
     @classmethod
     def _apply_model_defaults(
@@ -431,6 +436,18 @@ class ThesysLargeLanguageModel(OAICompatLargeLanguageModel):
                         chunk.delta.message.content = buffer
                         buffer = ""
                         yield chunk
+                    continue
+
+                if in_thinking and len(buffer) > self._MAX_THINKING_BUFFER_CHARS:
+                    # The model opened `<think>` but never emitted `</think>`.
+                    # Flush what we have buffered so far and stop trying to
+                    # strip it, so the user still gets the content and memory
+                    # does not grow unbounded.
+                    chunk.delta.message.content = buffer
+                    buffer = ""
+                    in_thinking = False
+                    thinking_started = False
+                    yield chunk
                     continue
 
                 if not in_thinking:

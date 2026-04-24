@@ -38,7 +38,7 @@ class TestValidateCredentials(unittest.TestCase):
         }
         mock_post.return_value = self._make_response(201, payload=payload)
 
-        self.model.validate_credentials("c1/openai/gpt-5/v-20251230", self.base_credentials)
+        self.model.validate_credentials("c1/anthropic/claude-sonnet-4.6/v-20260331", self.base_credentials)
 
         call_url = mock_post.call_args.args[0]
         self.assertEqual(call_url, f"{THE_SYS_ENDPOINT_URL}/chat/completions")
@@ -51,7 +51,7 @@ class TestValidateCredentials(unittest.TestCase):
             text="Invalid 'max_output_tokens': integer_below_min_value",
         )
 
-        self.model.validate_credentials("c1/openai/gpt-5/v-20251230", self.base_credentials)
+        self.model.validate_credentials("c1/anthropic/claude-sonnet-4.6/v-20260331", self.base_credentials)
 
         mock_retry.assert_called_once()
 
@@ -63,7 +63,7 @@ class TestValidateCredentials(unittest.TestCase):
             text="thinking parameter is required for this model",
         )
 
-        self.model.validate_credentials("c1/openai/gpt-5/v-20251230", self.base_credentials)
+        self.model.validate_credentials("c1/anthropic/claude-sonnet-4.6/v-20260331", self.base_credentials)
 
         mock_retry.assert_called_once()
 
@@ -72,4 +72,4 @@ class TestValidateCredentials(unittest.TestCase):
         mock_post.return_value = self._make_response(400, text="invalid api key")
 
         with self.assertRaises(CredentialsValidateFailedError):
-            self.model.validate_credentials("c1/openai/gpt-5/v-20251230", self.base_credentials)
+            self.model.validate_credentials("c1/anthropic/claude-sonnet-4.6/v-20260331", self.base_credentials)

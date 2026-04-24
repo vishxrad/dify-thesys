@@ -71,6 +71,25 @@ describe('C1Response', () => {
       expect(screen.getByTestId('c1-component')).toHaveAttribute('data-response', '<content><Card title=\'Hello\' /></content>')
       expect(screen.getByTestId('c1-component')).toHaveAttribute('data-streaming', 'true')
     })
+
+    it('should pass the raw payload through to the SDK (which handles entity decoding itself)', () => {
+      // The Thesys SDK (>=0.9.x) uses htmlparser2 with decodeEntities enabled,
+      // so it un-escapes `&quot;` etc. itself during content extraction. We
+      // deliberately pass the content through untouched instead of pre-decoding
+      // on our side, which would corrupt payloads whose strings legitimately
+      // include `&lt;` / `&gt;` characters.
+      const escaped = '<content thesys="true">{&quot;component&quot;:{&quot;component&quot;:&quot;Card&quot;}}</content>'
+
+      render(
+        <C1Response
+          content={escaped}
+          dataTestId="answer-c1"
+          responding={false}
+        />,
+      )
+
+      expect(screen.getByTestId('c1-component')).toHaveAttribute('data-response', escaped)
+    })
   })
 
   // Covers the action plumbing needed for interactive C1 content inside Dify chat.
@@ -94,7 +113,7 @@ describe('C1Response', () => {
       expect(mockOnSend).toHaveBeenCalledWith('User selected the morning flights filter.')
     })
 
-    it('should open a new tab for open_url actions', () => {
+    it('should open a new tab for open_url actions with http(s) schemes', () => {
       const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
 
       render(
@@ -112,6 +131,33 @@ describe('C1Response', () => {
       })
 
       expect(openSpy).toHaveBeenCalledWith('https://example.com', '_blank', 'noopener,noreferrer')
+
+      openSpy.mockRestore()
+    })
+
+    it('should reject unsafe URL schemes from LLM-supplied open_url actions', () => {
+      const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+
+      render(
+        <C1Response
+          content="<content />"
+          dataTestId="answer-c1"
+        />,
+      )
+
+      for (const url of [
+        'javascript:alert(1)',
+        'data:text/html,<script>alert(1)</script>',
+        'file:///etc/passwd',
+        'not-a-url',
+      ]) {
+        latestC1Props?.onAction?.({
+          type: 'open_url',
+          params: { url },
+        })
+      }
+
+      expect(openSpy).not.toHaveBeenCalled()
 
       openSpy.mockRestore()
     })

@@ -3,7 +3,7 @@ import type { ChatItem } from '../../../types'
 import type { IThoughtProps } from '@/app/components/base/chat/chat/thought'
 import type { FileEntity } from '@/app/components/base/file-uploader/types'
 import type { MarkdownProps } from '@/app/components/base/markdown'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import AgentContent from '../agent-content'
 
 vi.mock('@thesysai/genui-sdk', () => ({
@@ -15,10 +15,13 @@ vi.mock('@thesysai/genui-sdk', () => ({
   ),
 }))
 
-// Mock Markdown component used only in tests
+// Mock Markdown component used only in tests. The real `Markdown` always
+// renders `<div data-testid="markdown-body">`, and doesn't forward caller
+// `data-testid`; the wrapping div on the agent-content path carries the test
+// id instead.
 vi.mock('@/app/components/base/markdown', () => ({
   Markdown: (props: MarkdownProps & { 'data-testid'?: string }) => (
-    <div data-testid={props['data-testid'] || 'markdown'} data-content={String(props.content)} className={props.className}>
+    <div data-testid={props['data-testid'] || 'markdown-mock'} data-content={String(props.content)} className={props.className}>
       {String(props.content)}
     </div>
   ),
@@ -53,6 +56,9 @@ describe('AgentContent', () => {
     isAnswer: true,
   }
 
+  const getAnnotationMarkdown = () =>
+    within(screen.getByTestId('agent-content-markdown')).getByTestId('markdown-mock')
+
   it('renders logAnnotation if present', () => {
     const itemWithAnnotation = {
       ...mockItem,
@@ -61,7 +67,23 @@ describe('AgentContent', () => {
       },
     }
     render(<AgentContent item={itemWithAnnotation as ChatItem} />)
-    expect(screen.getByTestId('agent-content-markdown')).toHaveTextContent('Log Annotation Content')
+    expect(getAnnotationMarkdown()).toHaveAttribute('data-content', 'Log Annotation Content')
+  })
+
+  it('renders annotation content as plain Markdown even when it looks like C1', () => {
+    const itemWithC1LookingAnnotation = {
+      ...mockItem,
+      annotation: {
+        logAnnotation: {
+          content: '<content><Card title="From annotation" /></content>',
+        },
+      },
+    }
+    render(<AgentContent item={itemWithC1LookingAnnotation as ChatItem} />)
+
+    expect(screen.queryByTestId('agent-content-c1')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('c1-component')).not.toBeInTheDocument()
+    expect(getAnnotationMarkdown()).toHaveAttribute('data-content', '<content><Card title="From annotation" /></content>')
   })
 
   it('renders empty string if logAnnotation content is missing', () => {
@@ -72,7 +94,7 @@ describe('AgentContent', () => {
       },
     }
     const { rerender } = render(<AgentContent item={itemWithEmptyAnnotation as ChatItem} />)
-    expect(screen.getByTestId('agent-content-markdown')).toHaveAttribute('data-content', '')
+    expect(getAnnotationMarkdown()).toHaveAttribute('data-content', '')
 
     const itemWithUndefinedAnnotation = {
       ...mockItem,
@@ -81,12 +103,13 @@ describe('AgentContent', () => {
       },
     }
     rerender(<AgentContent item={itemWithUndefinedAnnotation as ChatItem} />)
-    expect(screen.getByTestId('agent-content-markdown')).toHaveAttribute('data-content', '')
+    expect(getAnnotationMarkdown()).toHaveAttribute('data-content', '')
   })
 
   it('renders content prop if provided and no annotation', () => {
     render(<AgentContent item={mockItem} content="Direct Content" />)
-    expect(screen.getByTestId('agent-content-markdown')).toHaveTextContent('Direct Content')
+    const markdown = within(screen.getByTestId('agent-content-markdown')).getByTestId('markdown-mock')
+    expect(markdown).toHaveAttribute('data-content', 'Direct Content')
   })
 
   it('renders C1 content with the C1 renderer', () => {

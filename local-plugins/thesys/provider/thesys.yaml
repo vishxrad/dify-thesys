@@ -27,7 +27,7 @@ provider_credential_schema:
         en_US: Validate Model
       type: text-input
       required: false
-      default: "c1/openai/gpt-5/v-20251230"
+      default: "c1/anthropic/claude-sonnet-4.6/v-20260331"
       placeholder:
         en_US: Model used for provider validation
 model_credential_schema:

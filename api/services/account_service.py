@@ -1092,9 +1092,40 @@ class TenantService:
         except BundledPluginInstallError:
             logger.exception("Failed to auto-install bundled plugins for tenant %s", tenant.id)
             if dify_config.PLUGIN_AUTO_INSTALL_STRICT:
+                # Strict mode treats plugin bootstrap as a precondition for a
+                # usable tenant. The tenant, upgrade-strategy, and credit-pool
+                # rows are already committed at this point, so we have to
+                # remove them here; otherwise the workspace survives without
+                # an owner and shows up in future lookups.
+                TenantService._delete_bootstrap_tenant(tenant.id)
                 raise
 
         return tenant
+
+    @staticmethod
+    def _delete_bootstrap_tenant(tenant_id: str) -> None:
+        """Remove a tenant whose bootstrap failed before an owner was attached.
+
+        This is intentionally narrow: it only runs from ``create_tenant`` before
+        ``create_tenant_member`` has linked any account to the workspace, so
+        there are no members, no apps, and no data to preserve.
+        """
+        try:
+            from models.model import TenantCreditPool
+
+            db.session.execute(
+                delete(TenantCreditPool).where(TenantCreditPool.tenant_id == tenant_id)
+            )
+            db.session.execute(
+                delete(TenantPluginAutoUpgradeStrategy).where(
+                    TenantPluginAutoUpgradeStrategy.tenant_id == tenant_id,
+                )
+            )
+            db.session.execute(delete(Tenant).where(Tenant.id == tenant_id))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            logger.exception("Failed to delete rolled-back tenant %s", tenant_id)
 
     @staticmethod
     def create_owner_tenant_if_not_exist(account: Account, name: str | None = None, is_setup: bool | None = False):

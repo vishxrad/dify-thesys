@@ -41,17 +41,29 @@ class BundledPluginService:
 
     @classmethod
     def install_for_tenant(cls, tenant_id: str) -> None:
-        """Install every configured bundled plugin for the provided tenant."""
+        """Install every configured bundled plugin for the provided tenant.
+
+        Each configured package is attempted independently. In strict mode the
+        first failure is raised after aborting the remaining installs. In
+        non-strict mode every failure is logged and installation continues so a
+        single bad package does not block tenant setup.
+        """
+        strict = dify_config.PLUGIN_AUTO_INSTALL_STRICT
+
         for configured_path in dify_config.PLUGIN_AUTO_INSTALL_LOCAL_PACKAGES:
-            plugin_path = cls._resolve_path(configured_path)
-            package = cls._load_plugin_package(plugin_path)
-
-            logger.info("Auto-installing bundled plugin from %s for tenant %s", plugin_path, tenant_id)
-
             try:
+                plugin_path = cls._resolve_path(configured_path)
+                package = cls._load_plugin_package(plugin_path)
+
+                logger.info(
+                    "Auto-installing bundled plugin from %s for tenant %s", plugin_path, tenant_id
+                )
+
                 upload_response = PluginService.upload_pkg(tenant_id, package)
                 install_response = PluginService.install_from_local_pkg(
-                    tenant_id, [upload_response.unique_identifier]
+                    tenant_id,
+                    [upload_response.unique_identifier],
+                    skip_redecode=True,
                 )
                 cls._wait_for_installation(
                     tenant_id=tenant_id,
@@ -61,15 +73,29 @@ class BundledPluginService:
                     all_installed=install_response.all_installed,
                 )
             except Exception as exc:
-                raise BundledPluginInstallError(
-                    f"Failed to auto-install bundled plugin from {plugin_path} for tenant {tenant_id}: {exc}"
-                ) from exc
+                err = exc if isinstance(exc, BundledPluginInstallError) else BundledPluginInstallError(
+                    f"Failed to auto-install bundled plugin from {configured_path} "
+                    f"for tenant {tenant_id}: {exc}"
+                )
+                if strict:
+                    raise err from exc
+                logger.exception(
+                    "Non-strict bundled plugin install failed for %s (tenant %s)",
+                    configured_path,
+                    tenant_id,
+                )
 
     @classmethod
     def _resolve_path(cls, configured_path: str) -> Path:
         path = Path(configured_path).expanduser()
         if not path.is_absolute():
-            path = Path.cwd() / path
+            # Relative paths depend on the worker CWD at request time, which is
+            # not predictable across deployment setups. Require absolute paths
+            # so misconfiguration fails fast instead of silently resolving to
+            # the wrong directory.
+            raise BundledPluginInstallError(
+                f"Configured bundled plugin path must be absolute: {configured_path}"
+            )
 
         return path.resolve()
 

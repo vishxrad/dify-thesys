@@ -67,12 +67,14 @@ Dify is an open-source LLM app development platform. Its intuitive interface com
 This fork adds first-class Thesys support on top of upstream Dify:
 
 - A dedicated `Thesys` model provider plugin lives in [local-plugins/thesys](./local-plugins/thesys) instead of relying on the generic OpenAI-compatible provider.
-- Thesys C1 / OpenUI responses render as generative UI in the Dify frontend instead of showing raw markup.
+- Thesys C1 / OpenUI responses render as generative UI in the Dify frontend — both the v1 JSON component format and the newer v2 openui-lang DSL (default model: `c1/anthropic/claude-sonnet-4.6/v-20260331`).
 - A source-based Docker overlay builds the repo's `api` and `web` code and boots the bundled Thesys plugin on plain `http://localhost`.
+- Tenant-creation bootstrap rolls back cleanly if the bundled plugin install fails under strict mode.
+- Frontend renders generative UI safely — URL-scheme allowlist on C1 actions, stability-gated format detection, error boundary around the SDK.
 
 If you want the Thesys-enabled version of this fork, use the source Docker stack described below. The upstream-style `docker compose up -d` command still starts the stock image-based Dify stack and will not include the repo's frontend/backend fork changes.
 
-For the full implementation history, design decisions, and debugging notes, see [changes.md](./changes.md).
+For a narrative architecture walkthrough, see [explainer.md](./explainer.md). For the chronological implementation history and debugging notes, see [changes.md](./changes.md).
 
 ## Quick start
 
@@ -106,7 +108,7 @@ After the containers are ready:
 If you intentionally want the stock Dify image-based deployment instead of this fork's source-built stack, use the original command:
 
 ```bash
-cd dify
+cd dify-thesys
 cd docker
 cp .env.example .env
 docker compose up -d

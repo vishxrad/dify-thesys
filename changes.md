@@ -596,3 +596,262 @@ That work should likely cover:
 - versioning policy
 - any marketplace metadata or review requirements
 - deciding whether the plugin should remain fully local-source-friendly or also ship as a standard marketplace artifact
+
+---
+
+## Phase 8: Senior-engineer review pass and hardening
+
+After the integration was demonstrably working end-to-end, a full review pass surfaced several real issues and one class of false alarm. The changes below were applied together.
+
+### Tenant creation orphan bug
+
+`TenantService.create_tenant` committed `Tenant`, `TenantPluginAutoUpgradeStrategy`, and the credit pool to Postgres before calling `BundledPluginService.install_for_tenant`. In strict mode, a plugin-install failure raised after those commits, leaving an orphan workspace with no owner and no cleanup.
+
+Fix:
+
+- on strict failure, `TenantService._delete_bootstrap_tenant` rolls back the three partially-committed rows (`TenantCreditPool`, `TenantPluginAutoUpgradeStrategy`, `Tenant`) before re-raising
+- test `test_create_tenant_raises_and_rolls_back_when_strict_bootstrap_fails` asserts the rollback fires
+
+### Synchronous 120s block on tenant creation
+
+`BundledPluginService._wait_for_installation` polled the plugin daemon with `time.sleep(1)` inline on the request thread, up to `PLUGIN_AUTO_INSTALL_TIMEOUT` (default was 120s). A slow or stuck install pinned a gunicorn worker for two minutes.
+
+Fix:
+
+- default timeout lowered from 120s to 60s
+- config description explicitly flags the remaining synchronous nature
+- a full Celery-backed async bootstrap is intentionally out of scope for this pass and noted as follow-up work
+
+### `install_from_local_pkg` scope-check bypass
+
+The service silently skipped `PluginService._check_plugin_installation_scope` whenever the identifier started with `local/`. The bundled-plugin flow was safe because it always re-uploaded before install, but any other caller passing a `local/` identifier bypassed the verification.
+
+Fix:
+
+- replaced prefix sniffing with an explicit `skip_redecode: bool = False` kwarg
+- `BundledPluginService` passes `skip_redecode=True` right after it calls `upload_pkg`
+- all other call sites retain the scope check
+
+### Non-strict bundled install stopping on first failure
+
+The previous loop aborted at the first failing package.
+
+Fix:
+
+- each configured package is tried independently
+- strict mode raises the first error after the loop completes; non-strict mode logs and continues
+- relative paths now raise a clear configuration error instead of silently resolving against `cwd`
+
+### Frontend: `data-testid` dropped by `Markdown`
+
+`Markdown` does not forward caller `data-testid`. The test mocks happened to read the prop, so tests passed; production DOM did not.
+
+Fix:
+
+- `ResponseRenderer` wraps the renderer in a `<div data-testid="${testIdBase}-markdown">` so the id lands in the real DOM
+- `basic-content.tsx` and `agent-content.tsx` do the same for the annotation path
+
+### Frontend: `open_url` action URL validation
+
+The C1 action handler called `window.open` on any URL string the model produced, including `javascript:` and `data:`.
+
+Fix:
+
+- `c1-response.tsx` validates URLs via `new URL(raw)` (no base) and rejects anything that isn't `http:` or `https:`
+- test `should reject unsafe URL schemes from LLM-supplied open_url actions` covers the behavior
+
+### Frontend: streaming-flash improvements
+
+Partial C1 payloads mid-stream caused transient error states and blank frames.
+
+Fixes (stacked):
+
+- `detectResponseFormat` now takes a `{ stable }` option: it only flips to C1 when the matching closing tag is already present in the content, or when the stream has finished (`!responding`). Partial payloads stay in the Markdown renderer, so the SDK never sees a half-open tag
+- Preload C1 chunk at module init in `response-renderer.tsx` so the first Markdown-to-C1 transition doesn't need to round-trip for the lazy bundle
+- Wrap C1 in `ErrorBoundary` so an SDK render throw cannot break the whole answer bubble
+- `useSettledIsStreaming` latches `isStreaming={true}` for 400ms after `responding` flips to false, covering the one-render window where the SDK's validator has not yet computed `validatedProps`
+
+Known caveat: a brief "Error while generating response" may still appear under certain payload conditions. This is an SDK-internal render gate that fires when both `validatedProps` and `isStreaming` are falsy at the same render. The settle-delay patch reduces but does not fully eliminate it in all cases.
+
+### Frontend: `<think>` vs `<thinking>` confusion
+
+Reviewed and confirmed not a bug. `<think>...</think>` is the model's reasoning-trace format (handled upstream by `Markdown`'s `preprocessThinkTag`). `<thinking>...</thinking>` is a Thesys C1 protocol envelope. They are intentionally different.
+
+### Annotation renderer scoping
+
+The `ResponseRenderer` flow was also being used for `annotation.logAnnotation` content. User-authored annotations that happen to start with C1-looking markup would have been rendered as generative UI.
+
+Fix:
+
+- annotation paths in `basic-content.tsx` and `agent-content.tsx` render only as plain Markdown
+- tests added for annotation text that looks like a C1 payload
+
+### Plugin: validate-credentials timeout
+
+`_VALIDATE_TIMEOUT = (10, 300)` on the ping call gave a five-minute read budget for what should be a single-token round-trip.
+
+Fix:
+
+- reduced to `(10, 30)`
+
+### Plugin: unbounded thinking buffer
+
+`_filter_thinking_stream` accumulated text into an unbounded string while looking for `</think>`. A malformed stream that opened `<think>` without ever closing it would grow memory indefinitely.
+
+Fix:
+
+- `_MAX_THINKING_BUFFER_CHARS = 65536` flush-and-stop cap
+- after hitting the cap the filter yields what it has and abandons the strip attempt
+
+### Plugin: dependency file drift
+
+`pyproject.toml` and `requirements.txt` listed overlapping pins with dead entries (`openai`, `setuptools`) that the plugin does not actually import.
+
+Fix:
+
+- both files reduced to the three actual runtime deps (`dify-plugin`, `pydantic`, `requests`)
+
+### Docker overlay: FORCE_VERIFYING_SIGNATURE warning
+
+The source overlay disables plugin signature verification so the unsigned bundled Thesys plugin can install. This is safe for the dev stack, risky if anyone copies the overlay to production.
+
+Fix:
+
+- overlay file gained a top-of-file comment explicitly flagging this as dev-only
+
+### Documentation
+
+- README `cd dify` stale copy-paste removed from both quick-start blocks
+- default `PLUGIN_AUTO_INSTALL_TIMEOUT` documentation expanded to call out the synchronous-block caveat
+
+### Tests added
+
+Unit coverage for: bundled plugin absolute-path enforcement, non-strict mode continuation past failures, strict-mode tenant rollback, `install_from_local_pkg` with and without `skip_redecode`, all three detector states (markdown, stable c1, unstable c1), C1 URL scheme allowlist, annotation-routed-as-Markdown behaviour.
+
+---
+
+## Phase 9: Upgrade `@thesysai/genui-sdk` to 0.9.x for openui-lang (v2) support
+
+The stock provider used to ship C1 responses as a `<content thesys="true">{JSON}</content>` envelope. Current Thesys models (notably `c1/anthropic/claude-sonnet-4.6/v-20260331`) emit a new format: `<content thesys="true" version="2">\n\`\`\`openui-lang\nroot = Card(...)\n\`\`\`\n</content>`. SDK 0.7.16 has no parser for this — it routed everything through its v1 JSON path and rendered its own "Error while generating response" state.
+
+### Upgrade scope
+
+- `@thesysai/genui-sdk` bumped `~0.7.16` → `~0.9.2` in the pnpm workspace catalog
+- `@openuidev/react-headless` added as a direct dependency (a required peer of the new SDK)
+- `layout.tsx` CSS import changed from `@crayonai/react-ui/styles/index.css` to `@thesysai/genui-sdk/dist/genui-sdk.css`, which defines the `--openui-*` CSS variables used by the new renderer
+
+### Roadblock: SDK doesn't export its CSS
+
+`@thesysai/genui-sdk@0.9.2`'s `package.json` exports only `.`, `./server`, `./crayon` — the bundled `dist/genui-sdk.css` isn't exposed. Next refused the deep import (`Module not found: Can't resolve '@thesysai/genui-sdk/dist/genui-sdk.css'`).
+
+Fix:
+
+- pnpm patch committed at `patches/@thesysai__genui-sdk@0.9.2.patch`
+- patch adds `"./dist/genui-sdk.css"` and `"./styles.css"` entries to the package's `exports` map
+- wired via `patchedDependencies` in `pnpm-workspace.yaml`
+
+### Roadblock: Dockerfile did not copy `patches/`
+
+The source-build web Dockerfile did a targeted `COPY package.json pnpm-lock.yaml pnpm-workspace.yaml /app/` but did not copy `patches/` before `pnpm install --frozen-lockfile`. pnpm failed with `ENOENT: no such file or directory, open '/app/patches/@thesysai__genui-sdk@0.9.2.patch'`.
+
+Fix:
+
+- `web/Dockerfile.source` now runs `COPY patches /app/patches` before the install step
+
+### Frontend simplification
+
+- removed the `decodeHtmlEntities` layer from `c1-response.tsx`: the new SDK uses `htmlparser2 { decodeEntities: true }` internally and decodes `&quot;` / `&lt;` / `&gt;` during content-tag text extraction. Pre-decoding on our side would corrupt payloads whose user-visible strings legitimately contain `&lt;` / `&gt;`
+- kept all other client-side hardening (URL allowlist, settle-delay, error boundary, stability-gated detector)
+
+### Verification
+
+- `version="2"` / openui-lang payloads now render as generative UI
+- the v1 JSON path still works for any legacy responses
+- tests updated: the entity-decode test was rewritten to assert the raw content passes through untouched
+
+---
+
+## Phase 10: Default model is now `c1/anthropic/claude-sonnet-4.6/v-20260331`
+
+With openui-lang rendering working, the predefined model in the plugin was updated to point at a v2-emitting Anthropic-backed Thesys model.
+
+Changes:
+
+- `local-plugins/thesys/models/llm/c1-openai-gpt-5-v-20251230.yaml` renamed to `c1-anthropic-claude-sonnet-4.6-v-20260331.yaml`, `model:` and `label:` updated
+- `local-plugins/thesys/models/llm/_position.yaml` points at the new identifier
+- `DEFAULT_VALIDATE_MODEL` in `provider/thesys.py` and `models/llm/llm.py` updated
+- `provider/thesys.yaml` credential schema `validate_model` default updated
+- plugin tests (`test_handle_response.py`, `test_validate_credentials.py`) re-parameterised
+
+Note: existing tenants that already have the old plugin installed continue with the old default until the plugin is reinstalled for that tenant; new tenants pick the new default up via `BundledPluginService`. Users can also add custom models with any Thesys model id.
+
+---
+
+## Phase 11: Plaintext extraction design (planned, not implemented)
+
+Research checkpoint rather than a shipped change. Recording the design space so a future pass can ship it cleanly.
+
+### Problem
+
+Rendering openui-lang end-to-end means `message.answer` stores the raw `<content>...</content>` wrapper. That works for:
+
+- chat UI rendering
+- same-conversation Thesys-to-Thesys multi-turn (Thesys expects its own prior output in context)
+
+And hurts at downstream consumers that expect natural-language prose:
+
+- cross-provider conversations (OpenAI/Anthropic seeing XML in history)
+- workflow LLM-node chaining to non-Thesys nodes, Code nodes, Send Email, etc.
+- conversation title/summary generation (Dify calls an LLM to summarise)
+- TTS (would literally speak XML tags)
+- copy-to-clipboard in the chat bubble
+
+### Decision: extract on demand, not at persistence
+
+Initially considered rewriting `message.answer` to plaintext and stashing raw in `message.message_metadata.c1_raw`. Rejected because it breaks Thesys-to-Thesys conversation memory (the model relies on seeing its own prior openui-lang output for multi-turn structural follow-ups). Instead:
+
+- `message.answer` stays as the raw wrapper (no schema change, no migration)
+- a pure `extract_plaintext(content)` helper lives next to the other Thesys utilities
+- each consumer that actually needs plaintext calls the helper at its call site: TTS, workflow LLM-node derived `text` variable, title generation, copy-to-clipboard
+
+### Extractor design
+
+Pure regex + component-aware formatter table. openui-lang has a stable, simple grammar:
+
+- one statement per line, form `name = Component(args…)`
+- strings are always `"..."`
+- no comments
+- references between statements are identifier tokens
+
+The extractor:
+
+1. strips the `<content ...>...</content>` envelope
+2. strips the ``` ```openui-lang ``` ` code fence
+3. decodes HTML entities
+4. walks each line, matches `(\w+)\(` to pull the component name, dispatches to a formatter
+5. formatter table covers known visible components (`Header`, `TextContent`, `Image`, `BarChart`, `FollowUpBlock`, `Button`, etc.) — each emits semantic placeholder prose (e.g., `[bar chart]`, `Follow-ups: A · B · C`)
+6. unknown component name falls through to plain string-literal extraction
+
+### Escape hatch for Thesys-to-Thesys workflow chaining
+
+Expose both `{{llm.text}}` (plaintext) and `{{llm.raw}}` (full openui-lang) as output variables on the workflow LLM node. Author picks per-edge.
+
+### Why this isn't shipped yet
+
+Needs the consumer-side wiring decisions, especially for the workflow LLM node's variable surface. Scoped as a follow-up pass.
+
+---
+
+## Updated outcome
+
+The fork now provides:
+
+- a dedicated `Thesys` provider plugin under `local-plugins/thesys`
+- full rendering of both v1 (JSON component tree) and v2 (openui-lang) responses
+- frontend trust-boundary and safety hardening around the generative UI renderer
+- repo-backed Docker source images for `api` and `web`, with a patched SDK CSS export
+- tenant bootstrap that rolls back cleanly on strict-mode plugin failures
+- a unified local path on plain `http://localhost` when started with the source compose overlay
+- predefined model targeted at `c1/anthropic/claude-sonnet-4.6/v-20260331`
+
+See `explainer.md` for a narrative architecture overview of how a Thesys conversation flows through the fork end-to-end.

@@ -24,12 +24,14 @@ const AgentContent: FC<AgentContentProps> = ({
     agent_thoughts,
   } = item
 
+  // Annotations are user-authored edits; always render them as Markdown so an
+  // annotation that happens to start with a C1-looking tag does not get handed
+  // to the generative-UI renderer.
   if (annotation?.logAnnotation) {
     return (
-      <ResponseRenderer
-        content={annotation.logAnnotation.content ?? ''}
-        testIdBase="agent-content"
-      />
+      <div data-testid="agent-content-markdown">
+        <Markdown content={annotation.logAnnotation.content ?? ''} />
+      </div>
     )
   }
 
@@ -51,8 +53,6 @@ const AgentContent: FC<AgentContentProps> = ({
                   data-testid="agent-thought-markdown"
                 />
               )}
-              {/* {item.tool} */}
-              {/* perhaps not use tool */}
               {!!thought.tool && (
                 <Thought
                   thought={thought}

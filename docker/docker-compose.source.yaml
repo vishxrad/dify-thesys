@@ -1,3 +1,12 @@
+# Source-build overlay for the repo-backed fork.
+#
+# Usage:
+#   docker compose -f docker-compose.yaml -f docker-compose.source.yaml up -d --build
+#
+# WARNING: this overlay sets FORCE_VERIFYING_SIGNATURE=false on the plugin
+# daemon so the repo-bundled (unsigned) Thesys plugin can install for new
+# tenants. Do not reuse this overlay in a production environment without
+# understanding that any unsigned plugin package can be installed.
 services:
   api:
     image: dify-api-source

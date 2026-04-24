@@ -575,14 +575,16 @@ class TestTenantService:
         assert result == mock_tenant
         mock_install_for_tenant.assert_called_once_with("tenant-456")
 
-    def test_create_tenant_raises_when_bundled_plugin_bootstrap_is_strict(
+    def test_create_tenant_raises_and_rolls_back_when_strict_bootstrap_fails(
         self, mock_db_dependencies, mock_rsa_dependencies, mock_external_service_dependencies
     ):
-        """Test that strict bundled plugin bootstrapping surfaces installation failures."""
+        """Strict bootstrap failure must surface the error AND roll back the orphaned tenant rows."""
         mock_external_service_dependencies[
             "feature_service"
         ].get_system_features.return_value.is_allow_create_workspace = True
         mock_rsa_dependencies.return_value = "mock_public_key"
+
+        rollback = MagicMock()
 
         with (
             patch("services.account_service.Tenant") as mock_tenant_class,
@@ -593,6 +595,7 @@ class TestTenantService:
             ),
             patch("services.credit_pool_service.CreditPoolService.create_default_pool"),
             patch.object(dify_config, "PLUGIN_AUTO_INSTALL_STRICT", True),
+            patch.object(TenantService, "_delete_bootstrap_tenant", rollback),
         ):
             mock_tenant = MagicMock()
             mock_tenant.id = "tenant-456"
@@ -601,6 +604,8 @@ class TestTenantService:
 
             with pytest.raises(BundledPluginInstallError, match="boom"):
                 TenantService.create_tenant("Workspace")
+
+        rollback.assert_called_once_with("tenant-456")
 
     def test_create_owner_tenant_if_not_exist_new_user(
         self, mock_db_dependencies, mock_rsa_dependencies, mock_external_service_dependencies

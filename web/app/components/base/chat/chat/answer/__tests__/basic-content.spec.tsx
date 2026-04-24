@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import type { ChatItem } from '../../../types'
 import type { MarkdownProps } from '@/app/components/base/markdown'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import BasicContent from '../basic-content'
 
 vi.mock('@thesysai/genui-sdk', () => ({
@@ -13,10 +13,12 @@ vi.mock('@thesysai/genui-sdk', () => ({
   ),
 }))
 
-// Mock Markdown component used only in tests
+// The real `Markdown` component renders a `<div data-testid="markdown-body">`,
+// so the `basic-content-markdown` testid is owned by the BasicContent wrapper.
+// Reflect that here: the mocked Markdown only carries data we assert against.
 vi.mock('@/app/components/base/markdown', () => ({
   Markdown: ({ content, className }: MarkdownProps) => (
-    <div data-testid="basic-content-markdown" data-content={String(content)} className={className}>
+    <div data-testid="markdown-mock" data-content={String(content)} className={className}>
       {String(content)}
     </div>
   ),
@@ -29,10 +31,12 @@ describe('BasicContent', () => {
     isAnswer: true,
   }
 
+  const getMarkdownContent = () =>
+    within(screen.getByTestId('basic-content-markdown')).getByTestId('markdown-mock')
+
   it('renders content correctly', () => {
     render(<BasicContent item={mockItem as ChatItem} />)
-    const markdown = screen.getByTestId('basic-content-markdown')
-    expect(markdown).toHaveAttribute('data-content', 'Hello World')
+    expect(getMarkdownContent()).toHaveAttribute('data-content', 'Hello World')
   })
 
   it('renders logAnnotation content if present', () => {
@@ -45,8 +49,23 @@ describe('BasicContent', () => {
       },
     }
     render(<BasicContent item={itemWithAnnotation as ChatItem} />)
-    const markdown = screen.getByTestId('basic-content-markdown')
-    expect(markdown).toHaveAttribute('data-content', 'Annotated Content')
+    expect(getMarkdownContent()).toHaveAttribute('data-content', 'Annotated Content')
+  })
+
+  it('renders annotation content as plain Markdown even when it looks like C1', () => {
+    const itemWithC1LookingAnnotation = {
+      ...mockItem,
+      annotation: {
+        logAnnotation: {
+          content: '<content><Card title="From annotation" /></content>',
+        },
+      },
+    }
+    render(<BasicContent item={itemWithC1LookingAnnotation as ChatItem} />)
+
+    expect(screen.queryByTestId('basic-content-c1')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('c1-component')).not.toBeInTheDocument()
+    expect(getMarkdownContent()).toHaveAttribute('data-content', '<content><Card title="From annotation" /></content>')
   })
 
   it('renders C1 responses with the C1 renderer', () => {
@@ -71,7 +90,7 @@ describe('BasicContent', () => {
       },
     }
     const { rerender } = render(<BasicContent item={itemWithEmptyAnnotation as ChatItem} />)
-    expect(screen.getByTestId('basic-content-markdown')).toHaveAttribute('data-content', '')
+    expect(getMarkdownContent()).toHaveAttribute('data-content', '')
 
     const itemWithUndefinedAnnotation = {
       ...mockItem,
@@ -80,7 +99,7 @@ describe('BasicContent', () => {
       },
     }
     rerender(<BasicContent item={itemWithUndefinedAnnotation as ChatItem} />)
-    expect(screen.getByTestId('basic-content-markdown')).toHaveAttribute('data-content', '')
+    expect(getMarkdownContent()).toHaveAttribute('data-content', '')
   })
 
   it('wraps Windows UNC paths in backticks', () => {
@@ -89,8 +108,7 @@ describe('BasicContent', () => {
       content: '\\\\server\\share\\file.txt',
     }
     render(<BasicContent item={itemWithUNC as ChatItem} />)
-    const markdown = screen.getByTestId('basic-content-markdown')
-    expect(markdown).toHaveAttribute('data-content', '`\\\\server\\share\\file.txt`')
+    expect(getMarkdownContent()).toHaveAttribute('data-content', '`\\\\server\\share\\file.txt`')
   })
 
   it('does not wrap content in backticks if it already is', () => {
@@ -99,8 +117,7 @@ describe('BasicContent', () => {
       content: '`\\\\server\\share\\file.txt`',
     }
     render(<BasicContent item={itemWithBackticks as ChatItem} />)
-    const markdown = screen.getByTestId('basic-content-markdown')
-    expect(markdown).toHaveAttribute('data-content', '`\\\\server\\share\\file.txt`')
+    expect(getMarkdownContent()).toHaveAttribute('data-content', '`\\\\server\\share\\file.txt`')
   })
 
   it('does not wrap backslash strings that are not UNC paths', () => {
@@ -109,8 +126,7 @@ describe('BasicContent', () => {
       content: '\\not-a-unc',
     }
     render(<BasicContent item={itemWithBackslashes as ChatItem} />)
-    const markdown = screen.getByTestId('basic-content-markdown')
-    expect(markdown).toHaveAttribute('data-content', '\\not-a-unc')
+    expect(getMarkdownContent()).toHaveAttribute('data-content', '\\not-a-unc')
   })
 
   it('applies error class when isError is true', () => {
@@ -119,7 +135,6 @@ describe('BasicContent', () => {
       isError: true,
     }
     render(<BasicContent item={errorItem as ChatItem} />)
-    const markdown = screen.getByTestId('basic-content-markdown')
-    expect(markdown).toHaveClass('text-[#F04438]!')
+    expect(getMarkdownContent()).toHaveClass('text-[#F04438]!')
   })
 })

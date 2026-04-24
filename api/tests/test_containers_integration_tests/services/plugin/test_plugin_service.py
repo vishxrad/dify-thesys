@@ -284,7 +284,7 @@ class TestUploadPkg:
 class TestInstallFromLocalPkg:
     @patch("services.plugin.plugin_service.FeatureService")
     @patch("services.plugin.plugin_service.PluginInstaller")
-    def test_skips_redecode_for_uploaded_local_packages(self, mock_installer_cls, mock_fs):
+    def test_skips_redecode_when_caller_pre_verified(self, mock_installer_cls, mock_fs):
         mock_fs.get_system_features.return_value = _make_features()
         installer = mock_installer_cls.return_value
         installer.install_from_identifiers.return_value = "task-id"
@@ -292,6 +292,7 @@ class TestInstallFromLocalPkg:
         result = PluginService.install_from_local_pkg(
             "t1",
             ["local/thesys:0.1.0@checksum"],
+            skip_redecode=True,
         )
 
         assert result == "task-id"
@@ -300,6 +301,23 @@ class TestInstallFromLocalPkg:
         call_args = installer.install_from_identifiers.call_args[0]
         assert call_args[1] == ["local/thesys:0.1.0@checksum"]
         assert call_args[2] == PluginInstallationSource.Package
+
+    @patch("services.plugin.plugin_service.FeatureService")
+    @patch("services.plugin.plugin_service.PluginInstaller")
+    def test_runs_scope_check_by_default(self, mock_installer_cls, mock_fs):
+        mock_fs.get_system_features.return_value = _make_features()
+        installer = mock_installer_cls.return_value
+        installer.install_from_identifiers.return_value = "task-id"
+        installer.decode_plugin_from_identifier.return_value = MagicMock(verification=None)
+
+        PluginService.install_from_local_pkg(
+            "t1",
+            ["local/thesys:0.1.0@checksum"],
+        )
+
+        installer.decode_plugin_from_identifier.assert_called_once_with(
+            "t1", "local/thesys:0.1.0@checksum",
+        )
 
 
 class TestInstallFromMarketplacePkg:

@@ -7,7 +7,7 @@ from dify_plugin.errors.model import CredentialsValidateFailedError
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_VALIDATE_MODEL = "c1/openai/gpt-5/v-20251230"
+DEFAULT_VALIDATE_MODEL = "c1/anthropic/claude-sonnet-4.6/v-20260331"
 
 
 class ThesysProvider(ModelProvider):

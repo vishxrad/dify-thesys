@@ -1,0 +1,15 @@
+diff --git a/package.json b/package.json
+index 63dbc757bb20dc3c16fc007019e8dcc76d0752e5..f45af49b8a396b263affe958db775898739e59da 100644
+--- a/package.json
++++ b/package.json
+@@ -20,7 +20,9 @@
+     "./crayon": {
+       "types": "./dist/crayon.d.ts",
+       "default": "./dist/crayon.js"
+-    }
++    },
++    "./dist/genui-sdk.css": "./dist/genui-sdk.css",
++    "./styles.css": "./dist/genui-sdk.css"
+   },
+   "files": [
+     "dist",

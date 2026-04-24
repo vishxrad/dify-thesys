@@ -14,7 +14,7 @@ import { AgentationLoader } from './components/devtools/agentation-loader'
 import { ReactScanLoader } from './components/devtools/react-scan/loader'
 import { I18nServerProvider } from './components/provider/i18n-server'
 import RoutePrefixHandle from './routePrefixHandle'
-import '@crayonai/react-ui/styles/index.css'
+import '@thesysai/genui-sdk/dist/genui-sdk.css'
 import './styles/globals.css'
 import './styles/markdown.css'
 

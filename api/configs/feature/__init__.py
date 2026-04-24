@@ -292,8 +292,12 @@ class PluginConfig(BaseSettings):
         ]
 
     PLUGIN_AUTO_INSTALL_TIMEOUT: PositiveInt = Field(
-        description="Timeout in seconds while waiting for bundled local plugin installation to finish",
-        default=120,
+        description=(
+            "Timeout in seconds while waiting for bundled local plugin installation to finish. "
+            "The wait currently blocks the tenant-creation request thread, so keep it short unless "
+            "you have moved the bootstrap to a background worker."
+        ),
+        default=60,
     )
 
     PLUGIN_AUTO_INSTALL_STRICT: bool = Field(

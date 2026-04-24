@@ -67,6 +67,7 @@
     "@lexical/text": "catalog:",
     "@lexical/utils": "catalog:",
     "@monaco-editor/react": "catalog:",
+    "@openuidev/react-headless": "catalog:",
     "@orpc/client": "catalog:",
     "@orpc/contract": "catalog:",
     "@orpc/openapi-client": "catalog:",

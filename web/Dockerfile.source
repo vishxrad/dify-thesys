@@ -22,6 +22,9 @@ COPY web/package.json /app/web/
 COPY e2e/package.json /app/e2e/
 COPY sdks/nodejs-client/package.json /app/sdks/nodejs-client/
 COPY packages /app/packages
+# pnpm reads patch files during install to apply `patchedDependencies`, so
+# they must be present before the install step.
+COPY patches /app/patches
 
 RUN corepack install
 RUN VITE_GIT_HOOKS=0 pnpm install --frozen-lockfile

@@ -46,8 +46,8 @@ class TestHandleGenerateStreamResponse(unittest.TestCase):
 
         chunks = list(
             self.model._handle_generate_stream_response(
-                model="c1/openai/gpt-5/v-20251230",
-                credentials=self.model._apply_model_defaults("c1/openai/gpt-5/v-20251230", self.credentials),
+                model="c1/anthropic/claude-sonnet-4.6/v-20260331",
+                credentials=self.model._apply_model_defaults("c1/anthropic/claude-sonnet-4.6/v-20260331", self.credentials),
                 response=response,
                 prompt_messages=self.prompt_messages,
             )
@@ -72,8 +72,8 @@ class TestHandleGenerateStreamResponse(unittest.TestCase):
 
         chunks = list(
             self.model._handle_generate_stream_response(
-                model="c1/openai/gpt-5/v-20251230",
-                credentials=self.model._apply_model_defaults("c1/openai/gpt-5/v-20251230", self.credentials),
+                model="c1/anthropic/claude-sonnet-4.6/v-20260331",
+                credentials=self.model._apply_model_defaults("c1/anthropic/claude-sonnet-4.6/v-20260331", self.credentials),
                 response=response,
                 prompt_messages=self.prompt_messages,
             )
