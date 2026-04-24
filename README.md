@@ -1,6 +1,11 @@
 
 
 
+
+
+
+
+
 ![cover-v5-optimized](./images/GitHub_README_if.png)
 
 <p align="center">
@@ -66,7 +71,7 @@
 Dify is an open-source LLM app development platform. Its intuitive interface combines AI workflow, RAG pipeline, agent capabilities, model management, observability features (including [Opik](https://www.comet.com/docs/opik/integrations/dify), [Langfuse](https://docs.langfuse.com), and [Arize Phoenix](https://docs.arize.com/phoenix)) and more, letting you quickly go from prototype to production. Here's a list of the core features:
 
 ## This fork
-https://github.com/user-attachments/assets/9698cb1d-13ea-4b4d-af6f-63cacbca1d8e
+https://github.com/user-attachments/assets/fed9ee0d-379d-4490-96c2-0efd87cd0f13
 
 This fork adds first-class Thesys support on top of upstream Dify:
 
