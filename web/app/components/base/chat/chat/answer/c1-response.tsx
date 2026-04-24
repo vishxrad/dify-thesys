@@ -9,6 +9,7 @@ import { C1Component, ThemeProvider } from '@thesysai/genui-sdk'
 import { useTheme } from 'next-themes'
 import { useEffect, useRef, useState } from 'react'
 import { useChatContext } from '../context'
+import './c1-response.css'
 
 type C1Action = Parameters<NonNullable<ComponentProps<typeof C1Component>['onAction']>>[0]
 
@@ -120,7 +121,7 @@ const C1Response: FC<C1ResponseProps> = ({
       // responsive rules (`@container (max-width: …)`) fire against the
       // chat-bubble width. Without it, grids of charts / cards render at
       // their "has room" layout and overlap inside narrow bubbles.
-      className={cn('@container text-text-primary', className)}
+      className={cn('dify-c1-content @container text-text-primary', className)}
       style={{ containerType: 'inline-size' }}
       data-testid={dataTestId}
     >

@@ -1,0 +1,69 @@
+/*
+ * Overrides scoped to the Thesys C1 renderer wrapper inside a Dify chat bubble.
+ *
+ * The SDK ships responsive rules like `@container (max-width: 30rem)` that
+ * collapse multi-column grids to a single column — but only at ~480px and
+ * narrower. Dify chat bubbles sit around 600-800px wide, so the SDK stays in
+ * its "has room" multi-column layout and cards/charts overflow into each
+ * other (see: two-card dashboards painting on top of each other).
+ *
+ * These rules force the SDK's grids to stack unconditionally inside our
+ * wrapper, and constrain every descendant to its parent's width so charts
+ * can't render beyond their allotted column.
+ */
+
+.dify-c1-content {
+  width: 100%;
+  min-width: 0;
+}
+
+.dify-c1-content,
+.dify-c1-content * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/*
+ * Collapse every known SDK block/grid variant to one column. `!important`
+ * because the SDK ships each rule with a specificity we'd otherwise have to
+ * match one-for-one across all current and future card types.
+ */
+.dify-c1-content .c1-medium-card-block__grid,
+.dify-c1-content .c1-medium-card-block__row,
+.dify-c1-content .c1-small-card-block__grid,
+.dify-c1-content .c1-small-card-block__row,
+.dify-c1-content .c1-option-cards__grid,
+.dify-c1-content .c1-option-cards__row,
+.dify-c1-content .c1-composite-card,
+.dify-c1-content .c1-composite-card__grid,
+.dify-c1-content .c1-context-card,
+.dify-c1-content .c1-data-tile-card-container {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: var(--openui-space-m, 12px) !important;
+}
+
+/*
+ * Chart wrappers need to respect the column width; the SDK's chart renderers
+ * size themselves against their intrinsic data range and spill outside the
+ * card otherwise.
+ */
+.dify-c1-content .c1-chart-wrapper,
+.dify-c1-content .c1-chart-wrapper > *,
+.dify-c1-content .c1-chart-with-context-slide,
+.dify-c1-content .c1-dual-charts-with-context-slide,
+.dify-c1-content .c1-chart-with-metrics-slide {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+}
+
+/*
+ * Tables inside the C1 content default to the SDK's intrinsic width. Let
+ * them scroll horizontally inside the bubble rather than overflow the card.
+ */
+.dify-c1-content .c1-table-scroll-container,
+.dify-c1-content .c1-editable-table-scroll-container {
+  overflow-x: auto;
+  max-width: 100%;
+}
