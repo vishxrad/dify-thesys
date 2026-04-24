@@ -787,58 +787,70 @@ Note: existing tenants that already have the old plugin installed continue with 
 
 ---
 
-## Phase 11: Plaintext extraction design (planned, not implemented)
+## Phase 11: Plaintext extraction helpers (implemented)
 
-Research checkpoint rather than a shipped change. Recording the design space so a future pass can ship it cleanly.
+Added a pair of pure extractors and wired them in at the call sites that specifically benefit from prose instead of the raw C1 envelope. Deliberately scoped around the principle "extract on demand, don't mutate persistence."
 
-### Problem
+### Design invariant
 
-Rendering openui-lang end-to-end means `message.answer` stores the raw `<content>...</content>` wrapper. That works for:
+`message.answer` stays as the raw `<content>...</content>` wrapper. No schema change, no migration. That preserves full-fidelity Thesys-to-Thesys conversation memory (the model relies on seeing its own prior openui-lang output for multi-turn structural follow-ups). Consumers that need prose materialise it themselves.
 
-- chat UI rendering
-- same-conversation Thesys-to-Thesys multi-turn (Thesys expects its own prior output in context)
+### The extractors
 
-And hurts at downstream consumers that expect natural-language prose:
+- `api/libs/c1_plaintext.py` — Python, `is_c1_content(content)` and `extract_plaintext(content)`. Non-C1 content is returned unchanged.
+- `web/app/components/base/chat/chat/answer/extract-c1-plaintext.ts` — TypeScript, same contract and formatter table so the two implementations produce matching output.
 
-- cross-provider conversations (OpenAI/Anthropic seeing XML in history)
-- workflow LLM-node chaining to non-Thesys nodes, Code nodes, Send Email, etc.
-- conversation title/summary generation (Dify calls an LLM to summarise)
-- TTS (would literally speak XML tags)
-- copy-to-clipboard in the chat bubble
+Both work the same way:
 
-### Decision: extract on demand, not at persistence
+1. match the `<content ...>...</content>` envelope
+2. HTML-entity-decode the inner text
+3. dispatch on the `version` attribute: v2 → openui-lang parser, v1/default → JSON walker
+4. v2: strip the ``` ```openui-lang ``` ` fence, iterate line by line, match `name = Component(args…)`, dispatch into a formatter table
+5. v1: `JSON.parse` / `json.loads` then walk the tree collecting strings under known text keys (`title`, `description`, `text`, `label`, etc.), falling back to a regex sweep if parsing fails
 
-Initially considered rewriting `message.answer` to plaintext and stashing raw in `message.message_metadata.c1_raw`. Rejected because it breaks Thesys-to-Thesys conversation memory (the model relies on seeing its own prior openui-lang output for multi-turn structural follow-ups). Instead:
+### Component-aware formatting
 
-- `message.answer` stays as the raw wrapper (no schema change, no migration)
-- a pure `extract_plaintext(content)` helper lives next to the other Thesys utilities
-- each consumer that actually needs plaintext calls the helper at its call site: TTS, workflow LLM-node derived `text` variable, title generation, copy-to-clipboard
+The v2 formatter table covers the known visible components and emits semantic prose / placeholders:
 
-### Extractor design
+- `Header("Title", "Subtitle")` → `# Title\n_Subtitle_`
+- `InlineHeader("Title", "Subtitle")` → `**Title** — Subtitle`
+- `TextContent("Body")` → `Body`
+- `IconText(icon, variant, "Title", "Desc", ...)` → `**Title** — Desc`
+- `FollowUpBlock(["A", "B", "C"])` → `Follow-ups: A · B · C`
+- `Image(url, "alt")` → `[image: alt]`
+- `Button("Label")` → `[button: Label]`
+- `BarChart(...)` / `LineChart(...)` / etc. → `[bar chart]` etc.
+- `Card`, `Section`, `CompositeCardBlock`, `CompositeCardItem`, etc. → skipped (containers; their children emit themselves)
+- `Icon`, `Query`, `Mutation`, `$state` declarations → skipped (identifier/plumbing strings are not prose)
+- Unknown components → generic string-literal extraction
 
-Pure regex + component-aware formatter table. openui-lang has a stable, simple grammar:
+### Consumer wiring
 
-- one statement per line, form `name = Component(args…)`
-- strings are always `"..."`
-- no comments
-- references between statements are identifier tokens
+- **Copy-to-clipboard** (`web/app/components/base/chat/chat/answer/operation.tsx`): the copy button now runs `copy(extractC1Plaintext(content))` instead of the raw content. Non-C1 messages round-trip unchanged.
+- **TTS** (`api/core/base/tts/app_generator_tts_publisher.py`): `AppGeneratorTTSPublisher` now detects when the accumulated `msg_text` starts with a Thesys envelope tag. In that case it suppresses mid-stream sentence-threshold flushing (speaking partial XML/DSL is noise) and, at end of stream, extracts plaintext before calling `_invoice_tts`.
+- **Title generation**: verified in-source and confirmed not affected. `MessageCycleManager.generate_conversation_name` uses the user's query string, not the assistant answer, so the XML wrapper is never in the title prompt.
+- **Workflow LLM-node derived `text` variable**: deferred. The LLM node implementation lives in the vendored `graphon` package inside the API venv, so a proper derived variable is an upstream Dify change rather than a local fork patch. Documented as a known limitation.
 
-The extractor:
+### Tests
 
-1. strips the `<content ...>...</content>` envelope
-2. strips the ``` ```openui-lang ``` ` code fence
-3. decodes HTML entities
-4. walks each line, matches `(\w+)\(` to pull the component name, dispatches to a formatter
-5. formatter table covers known visible components (`Header`, `TextContent`, `Image`, `BarChart`, `FollowUpBlock`, `Button`, etc.) — each emits semantic placeholder prose (e.g., `[bar chart]`, `Follow-ups: A · B · C`)
-6. unknown component name falls through to plain string-literal extraction
+- `api/tests/unit_tests/libs/test_c1_plaintext.py` — 16 tests covering v2 header/body extraction, HTML entity decoding, follow-up block joining, state/icon/query skipping, unknown-component fallback, chart placeholder formatting, malformed body graceful degradation, v1 JSON tree walking, malformed-JSON fallback, and v1 entity decoding.
+- `web/app/components/base/chat/chat/answer/__tests__/extract-c1-plaintext.spec.ts` — 15 mirrored tests for the TS implementation.
+- `api/tests/unit_tests/core/base/test_app_generator_tts_publisher.py` — two new tests: one asserts the end-of-stream TTS call receives extracted plaintext for a C1 buffer; the other asserts mid-stream sentence flushing is suppressed when a C1 prefix is detected.
+- `web/app/components/base/chat/chat/answer/__tests__/operation.spec.tsx` — added a copy-button test that asserts the clipboard receives plaintext, not the raw XML wrapper.
 
-### Escape hatch for Thesys-to-Thesys workflow chaining
+### What breaks where — revised
 
-Expose both `{{llm.text}}` (plaintext) and `{{llm.raw}}` (full openui-lang) as output variables on the workflow LLM node. Author picks per-edge.
-
-### Why this isn't shipped yet
-
-Needs the consumer-side wiring decisions, especially for the workflow LLM node's variable surface. Scoped as a follow-up pass.
+| Scenario | Status |
+|---|---|
+| Chat copy-to-clipboard | ✅ plaintext |
+| TTS (text-to-speech) | ✅ speaks prose, not markup |
+| Single-turn Thesys chat | ✅ unchanged |
+| Multi-turn Thesys-to-Thesys chat | ✅ unchanged (raw wrapper preserved in history) |
+| Conversation title generation | ✅ never used assistant answer anyway |
+| Cross-provider mid-conversation history | ⚠️ unchanged — still shows XML to the other provider in history |
+| Workflow LLM node → non-Thesys node | ⚠️ still emits the raw wrapper as the chained variable (needs upstream change) |
+| Agent / function calling | ❌ incompatible by design |
+| Structured output via JSON schema | ❌ incompatible by design |
 
 ---
 

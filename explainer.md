@@ -221,7 +221,32 @@ A Thesys conversation lives in the standard Dify tables:
 
 **Nothing special about the storage layout today.** The full wrapper lands in `message.answer` unchanged. This preserves structural context for Thesys-to-Thesys multi-turn — the model sees its own prior openui-lang when building a new turn.
 
-A planned follow-up will expose a pure `extract_plaintext(content)` helper, called on demand at the specific consumers that actually want prose (TTS, workflow chaining into non-Thesys nodes, conversation title generation, copy-to-clipboard). `message.answer` stays as the raw wrapper. See the "Phase 11" section in `changes.md` for the design.
+---
+
+## Plaintext extraction for non-UI consumers
+
+Some consumers need natural-language prose, not the raw wrapper. A pair of pure extractors — `api/libs/c1_plaintext.py` and `web/app/components/base/chat/chat/answer/extract-c1-plaintext.ts` — turn a C1 envelope into a readable plaintext rendering. Non-C1 content passes through unchanged.
+
+Both implementations share the same formatter table, so the two materialisations agree:
+
+- `Header(title, subtitle)` → `# title\n_subtitle_`
+- `TextContent(text)` → `text`
+- `FollowUpBlock([…])` → `Follow-ups: A · B · C`
+- `Image(url, alt)` → `[image: alt]`
+- `BarChart(...)` / `LineChart(...)` / etc. → `[bar chart]` etc.
+- Containers (`Card`, `Section`, `CompositeCardBlock`, …) — skipped, children render themselves
+- Plumbing (`Icon`, `Query`, `Mutation`, `$state`) — skipped
+- Unknown components — fall back to a generic string-literal sweep
+
+Currently called from:
+
+- **`operation.tsx`** — the chat-bubble copy button copies the plaintext rendering, not the raw XML
+- **`AppGeneratorTTSPublisher`** — detects a Thesys envelope prefix in the accumulated buffer, suppresses mid-stream sentence flushing (so the TTS engine never starts speaking partial DSL), and extracts plaintext at end-of-stream before invoking the TTS model
+
+**Deliberately not wired** (by design or because of constraints):
+
+- **Conversation title generation** never reads the assistant answer; it summarises from the user query. Not affected.
+- **Workflow LLM-node `{{node.text}}` derived variable** would be the cleanest fix for node-to-node chaining across providers. The LLM node lives in the vendored `graphon` package, so this belongs in upstream Dify rather than this fork. Documented as a known limitation.
 
 ---
 
@@ -233,17 +258,17 @@ The integration is currently scoped to **single-model, single-provider chat conv
 |---|---|
 | Single-turn chat with Thesys | ✅ works |
 | Multi-turn chat on the same Thesys model | ✅ works (model sees its own openui-lang as context) |
-| Multi-turn chat switching providers mid-conversation | ⚠️ next provider sees raw XML in history; model quality degrades |
-| Workflow LLM node → another LLM node, both Thesys | ⚠️ the chained node receives raw XML; needs a plaintext extractor |
-| Workflow LLM node → Code/HTTP/Send-Email node | ⚠️ same |
-| Conversation title generation | ⚠️ Dify's title summariser sees XML |
-| TTS | ⚠️ would read markup aloud |
-| RAG retrieval | ✅ retrieval itself is unaffected (uses the user query, not the LLM output) |
+| Copy-to-clipboard from the chat bubble | ✅ copies plaintext (via `extractC1Plaintext`) |
+| TTS | ✅ speaks plaintext (via `extract_plaintext` in the publisher) |
+| Conversation title generation | ✅ title prompt never reads the assistant answer |
+| RAG retrieval | ✅ retrieval uses the user query, unaffected by the answer format |
+| Multi-turn chat switching providers mid-conversation | ⚠️ the next provider sees raw XML in history; quality degrades |
+| Workflow LLM node → non-Thesys node | ⚠️ chained variable is the raw wrapper; needs a `{{node.text}}` derived variable in the vendored `graphon` LLM node (upstream Dify change) |
+| Workflow LLM node → another Thesys LLM node | ✅ raw wrapper is the right input anyway |
 | Agent / function calling | ❌ incompatible by design (`function_calling_type: no_call`) |
 | Structured output via JSON schema | ❌ incompatible by design (Thesys emits UI, not JSON schemas) |
-| Copy-to-clipboard | ⚠️ copies the raw XML |
 
-The ⚠️ cases all get fixed by the planned `extract_plaintext` pass. The ❌ cases are fundamental to the Thesys "UI instead of prose" design and won't be resolved by any amount of plumbing on our side.
+The remaining ⚠️ cases both boil down to "another LLM call reads our `message.answer`." The cleanest fix is upstream (expose a derived plaintext view on the LLM node output variable). The ❌ cases are fundamental to the Thesys "UI instead of prose" design.
 
 ---
 
@@ -254,14 +279,18 @@ Frontend:
 - `web/app/components/base/chat/chat/answer/detect-response-format.ts`
 - `web/app/components/base/chat/chat/answer/response-renderer.tsx`
 - `web/app/components/base/chat/chat/answer/c1-response.tsx`
+- `web/app/components/base/chat/chat/answer/extract-c1-plaintext.ts`
 - `web/app/components/base/chat/chat/answer/basic-content.tsx`
 - `web/app/components/base/chat/chat/answer/agent-content.tsx`
+- `web/app/components/base/chat/chat/answer/operation.tsx`
 - `web/app/components/base/chat/chat/hooks.ts`
 - `web/app/layout.tsx`
 
 Backend:
 
 - `api/core/app/task_pipeline/easy_ui_based_generate_task_pipeline.py`
+- `api/core/base/tts/app_generator_tts_publisher.py`
+- `api/libs/c1_plaintext.py`
 - `api/services/plugin/plugin_service.py`
 - `api/services/plugin/bundled_plugin_service.py`
 - `api/services/account_service.py`

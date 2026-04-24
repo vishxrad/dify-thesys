@@ -383,3 +383,56 @@ class TestAppGeneratorTTSPublisher:
         publisher._msg_queue.get.side_effect = Exception("error")
 
         publisher._runtime()
+
+    def test_runtime_extracts_plaintext_from_c1_buffer_at_stream_end(self, mock_model_manager):
+        # When the buffered text is a Thesys <content> envelope, the TTS
+        # invocation at stream end must receive the extracted plaintext,
+        # not the raw XML / openui-lang markup.
+        publisher = AppGeneratorTTSPublisher("tenant", "voice1")
+        publisher.executor = MagicMock()
+        publisher.msg_text = (
+            '<content thesys="true" version="2">\n'
+            "```openui-lang\n"
+            'root = Card([h])\n'
+            'h = Header("Hello!", "How can I help?")\n'
+            "```\n"
+            "</content>"
+        )
+
+        publisher._msg_queue.put(None)
+        publisher._runtime()
+
+        publisher.executor.submit.assert_called_once()
+        spoken_text = publisher.executor.submit.call_args.args[1]
+        assert "Hello!" in spoken_text
+        assert "How can I help?" in spoken_text
+        assert "<content" not in spoken_text
+        assert "openui-lang" not in spoken_text
+
+    def test_runtime_suppresses_mid_stream_flush_when_buffer_is_c1(self, mock_model_manager, mocker):
+        # While C1 content is accumulating, we must NOT call executor.submit
+        # from the mid-stream sentence-threshold path; the TTS engine would
+        # start speaking XML / DSL tokens otherwise.
+        publisher = AppGeneratorTTSPublisher("tenant", "voice1")
+        publisher.executor = MagicMock()
+
+        mocker.patch.object(
+            publisher,
+            "_extract_sentence",
+            return_value=(["dummy.", "sentences.", "here."] * 3, ""),
+        )
+
+        from core.app.entities.queue_entities import QueueTextChunkEvent
+
+        chunk_event = MagicMock()
+        chunk_event.event = MagicMock(spec=QueueTextChunkEvent)
+        chunk_event.event.text = '<content thesys="true">partial payload still streaming'
+
+        publisher._msg_queue.put(chunk_event)
+        publisher._msg_queue.put(None)
+
+        publisher._runtime()
+
+        # Exactly one submit at end-of-stream (for the final plaintext extract),
+        # zero during streaming.
+        assert publisher.executor.submit.call_count == 1

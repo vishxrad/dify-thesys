@@ -17,6 +17,16 @@ from core.app.entities.queue_entities import (
 from core.model_manager import ModelInstance, ModelManager
 from graphon.model_runtime.entities.message_entities import TextPromptMessageContent
 from graphon.model_runtime.entities.model_entities import ModelType
+from libs.c1_plaintext import extract_plaintext, is_c1_content
+
+# Cheap prefix check before we commit to suppressing sentence flushing.
+# Matches the opening tag of any Thesys-wrapped response; we stop reading out
+# sentences mid-stream once the content is detected as a generative-UI payload
+# because spoken markup is noise.
+_C1_PREFIX_PATTERN = re.compile(
+    r"^\s*<(?:thinking|content|artifact|custom_markdown)\b",
+    re.IGNORECASE,
+)
 
 
 class AudioTrunk:
@@ -71,6 +81,7 @@ class AppGeneratorTTSPublisher:
             self.voice = self.voices[0].get("value")
         self.max_sentence = 2
         self._last_audio_event: AudioTrunk | None = None
+        self._suppress_sentence_flush = False
         # FIXME better way to handle this threading.start
         threading.Thread(target=self._runtime).start()
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=3)
@@ -85,9 +96,16 @@ class AppGeneratorTTSPublisher:
             try:
                 message = self._msg_queue.get()
                 if message is None:
-                    if self.msg_text and len(self.msg_text.strip()) > 0:
+                    # End of stream. If the buffered text is a Thesys C1
+                    # response, extract plaintext so the TTS engine speaks
+                    # prose instead of XML/openui-lang markup. Otherwise emit
+                    # whatever's left in `msg_text` as-is.
+                    tts_text = self.msg_text
+                    if is_c1_content(tts_text):
+                        tts_text = extract_plaintext(tts_text)
+                    if tts_text and len(tts_text.strip()) > 0:
                         futures_result = self.executor.submit(
-                            _invoice_tts, self.msg_text, self.model_instance, self.voice
+                            _invoice_tts, tts_text, self.model_instance, self.voice
                         )
                         future_queue.put(futures_result)
                     break
@@ -111,6 +129,16 @@ class AppGeneratorTTSPublisher:
                     if isinstance(output, str):
                         self.msg_text += output
                 self.last_message = message
+
+                # If the accumulated text looks like a Thesys C1 payload,
+                # hold all buffered content until the stream ends and the
+                # end-of-stream path can extract plaintext. Speaking half
+                # an XML envelope is worse than a short silence.
+                if not self._suppress_sentence_flush and _C1_PREFIX_PATTERN.match(self.msg_text):
+                    self._suppress_sentence_flush = True
+                if self._suppress_sentence_flush:
+                    continue
+
                 sentence_arr, text_tmp = self._extract_sentence(self.msg_text)
                 if len(sentence_arr) >= min(self.max_sentence, 7):
                     self.max_sentence += 1

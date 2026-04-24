@@ -277,6 +277,21 @@ describe('Operation', () => {
       await user.click(screen.getByTestId('copy-btn'))
       expect(copy).toHaveBeenCalledWith('Hello World')
     })
+
+    it('should copy plaintext extracted from C1 content, not the raw XML', async () => {
+      const user = userEvent.setup()
+      const rawC1 = '<content thesys="true" version="2">\n```openui-lang\n'
+        + 'root = Card([hdr])\n'
+        + 'hdr = Header("Hello!", "How can I help you today?")\n'
+        + '```\n</content>'
+      renderOperation({ ...baseProps, item: { ...baseItem, content: rawC1 } })
+      await user.click(screen.getByTestId('copy-btn'))
+      const copied = (copy as unknown as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0] as string
+      expect(copied).toContain('Hello!')
+      expect(copied).toContain('How can I help you today?')
+      expect(copied).not.toContain('<content')
+      expect(copied).not.toContain('openui-lang')
+    })
   })
 
   describe('Regenerate', () => {

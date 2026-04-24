@@ -14,6 +14,7 @@ import {
 import { useTranslation } from 'react-i18next'
 import EditReplyModal from '@/app/components/app/annotation/edit-annotation-modal'
 import ActionButton, { ActionButtonState } from '@/app/components/base/action-button'
+import { extractC1Plaintext } from '@/app/components/base/chat/chat/answer/extract-c1-plaintext'
 import Log from '@/app/components/base/chat/chat/log'
 import AnnotationCtrlButton from '@/app/components/base/features/new-feature-panel/annotation-reply/annotation-ctrl-button'
 import Modal from '@/app/components/base/modal/modal'
@@ -301,7 +302,11 @@ const Operation: FC<OperationProps> = ({
             {!humanInputFormDataList?.length && (
               <ActionButton
                 onClick={() => {
-                  copy(content)
+                  // Thesys responses persist as a `<content>` XML envelope.
+                  // Copy the extracted plaintext so users get readable prose
+                  // instead of the wrapper markup on non-C1 messages the
+                  // extractor returns the original content unchanged.
+                  copy(extractC1Plaintext(content))
                   toast.success(t('actionMsg.copySuccessfully', { ns: 'common' }))
                 }}
                 data-testid="copy-btn"
