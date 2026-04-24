@@ -6,6 +6,7 @@ import type {
 } from 'react'
 import { cn } from '@langgenius/dify-ui/cn'
 import { C1Component, ThemeProvider } from '@thesysai/genui-sdk'
+import { useTheme } from 'next-themes'
 import { useEffect, useRef, useState } from 'react'
 import { useChatContext } from '../context'
 
@@ -83,6 +84,11 @@ const C1Response: FC<C1ResponseProps> = ({
 }) => {
   const { onSend, readonly } = useChatContext()
   const isStreaming = useSettledIsStreaming(responding)
+  // Mirror Dify's light/dark theme into the SDK so a dark chat shell doesn't
+  // paint a glaring light-mode generative UI inside it. `resolvedTheme`
+  // collapses `system` into the actual `light` / `dark` value.
+  const { resolvedTheme } = useTheme()
+  const c1Mode: 'light' | 'dark' = resolvedTheme === 'dark' ? 'dark' : 'light'
 
   const handleAction = (event: C1Action) => {
     if (event.type === 'open_url') {
@@ -110,7 +116,7 @@ const C1Response: FC<C1ResponseProps> = ({
 
   return (
     <div className={cn('text-text-primary', className)} data-testid={dataTestId}>
-      <ThemeProvider>
+      <ThemeProvider mode={c1Mode}>
         <C1Component
           c1Response={content}
           isStreaming={isStreaming}
