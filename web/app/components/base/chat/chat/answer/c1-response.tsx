@@ -115,7 +115,15 @@ const C1Response: FC<C1ResponseProps> = ({
   }
 
   return (
-    <div className={cn('text-text-primary', className)} data-testid={dataTestId}>
+    <div
+      // `container-type: inline-size` is what lets the SDK's internal
+      // responsive rules (`@container (max-width: …)`) fire against the
+      // chat-bubble width. Without it, grids of charts / cards render at
+      // their "has room" layout and overlap inside narrow bubbles.
+      className={cn('@container text-text-primary', className)}
+      style={{ containerType: 'inline-size' }}
+      data-testid={dataTestId}
+    >
       <ThemeProvider mode={c1Mode}>
         <C1Component
           c1Response={content}
